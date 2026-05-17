@@ -1,0 +1,22 @@
+# Variables de entorno — NUNCA subir al repo
+.env
+
+# Entorno virtual de Python
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Archivos de sistema
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Alembic (versiones compiladas)
+*.pyc
