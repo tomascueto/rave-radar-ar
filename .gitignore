@@ -20,3 +20,10 @@ Thumbs.db
 
 # Alembic (versiones compiladas)
 *.pyc
+
+
+events_raw.json
+event_ids.json
+page_*.txt
+rsc_*.txt
+*.html
