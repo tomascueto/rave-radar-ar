@@ -29,6 +29,20 @@ class UserRoleEnum(str, enum.Enum):
 
 
 # ─── MUNDO SCRAPING ───────────────────────────────────────────────────────────
+class City(Base):
+    __tablename__ = "cities"
+
+    id = Column(UUID(as_uuid=True), primary_key=True)  # UUID de Jodify, no autogenerado
+    name = Column(String(100), nullable=False)
+    alias = Column(String(100))
+    country = Column(String(100), default="Argentina")
+    latitude = Column(Float)
+    longitude = Column(Float)
+    popular = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    venues = relationship("Venue", back_populates="city")
 
 class Venue(Base):
     __tablename__ = "venues"
@@ -37,7 +51,8 @@ class Venue(Base):
     name = Column(String(200), nullable=False)
     address = Column(String(300))
     neighborhood = Column(String(100))
-    city = Column(String(100))
+    city_name = Column(String(100))
+    city_id = Column(UUID(as_uuid=True), ForeignKey("cities.id"), nullable=True)
     province = Column(String(100))
     country = Column(String(100), default="Argentina")
     coordinates = Column(Geometry("POINT", srid=4326))
@@ -45,6 +60,7 @@ class Venue(Base):
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
     events = relationship("Event", back_populates="venue")
+    city = relationship("City", back_populates="venues")
 
 
 class Source(Base):
