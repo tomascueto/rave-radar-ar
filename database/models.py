@@ -42,6 +42,7 @@ class City(Base):
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    events = relationship("Event", back_populates="city")
     venues = relationship("Venue", back_populates="city")
 
 class Venue(Base):
@@ -87,6 +88,7 @@ class Event(Base):
     date_to = Column(DateTime(timezone=True))
     min_price = Column(Numeric(10, 2))
     max_price = Column(Numeric(10, 2))
+    city_id = Column(UUID(as_uuid=True), ForeignKey("cities.id"), nullable=True)
     currency = Column(String(10), default="ARS")
     ticket_url = Column(String(500))
     flyer_url = Column(String(500))
@@ -110,6 +112,7 @@ class Event(Base):
     genres = relationship("EventGenre", back_populates="event")
     saved_by = relationship("UserSavedEvent", back_populates="event")
     history = relationship("UserEventHistory", back_populates="event")
+    city = relationship("City", back_populates="events")
 
 
 class DJ(Base):
