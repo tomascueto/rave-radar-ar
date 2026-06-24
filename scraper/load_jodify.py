@@ -1,12 +1,11 @@
-# scraper/load_jodify.py
 """
 Pipeline de carga: lee events_raw.json e inserta en PostgreSQL.
 Estrategia:
   - Source:  upsert por nombre
-  - Venue:   upsert por (name, city) — sin coordenadas por ahora
+  - Venue:   upsert por (nombre + city_id) — evita duplicados cross-ciudad
   - Event:   upsert por external_id
-  - DJ:      upsert por nombre (normalizado)
-  - Genre:   upsert por slug (normalizado)
+  - DJ:      upsert por nombre normalizado
+  - Genre:   upsert por slug normalizado
 """
 
 import json
@@ -16,12 +15,12 @@ import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+import ftfy
 from sqlalchemy.orm import Session
 
-from database.connection import SessionLocal, engine
+from database.connection import SessionLocal
 from database.models import (
-    DJ, Base, Event, EventDJ, EventGenre, Genre, Source, Venue,
+    DJ, City, Event, EventDJ, EventGenre, Genre, Source, Venue,
 )
 
 logging.basicConfig(
@@ -36,8 +35,14 @@ EVENTS_FILE = Path("events_raw.json")
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
+def fix_encoding(text: str | None) -> str | None:
+    """Repara texto con encoding roto: 'CÃ³rdoba' → 'Córdoba'."""
+    if not text:
+        return text
+    return ftfy.fix_text(text)
+
+
 def slugify(text: str) -> str:
-    """'Progressive House' → 'progressive-house'"""
     text = text.lower().strip()
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"[\s_]+", "-", text)
@@ -45,7 +50,6 @@ def slugify(text: str) -> str:
 
 
 def parse_prices(price_list: list | None) -> tuple[Decimal | None, Decimal | None]:
-    """Devuelve (min_price, max_price) del array de precios de Jodify."""
     if not price_list:
         return None, None
     prices = []
@@ -63,16 +67,18 @@ def parse_prices(price_list: list | None) -> tuple[Decimal | None, Decimal | Non
 
 def parse_venue_parts(venue_str: str | None) -> tuple[str, str | None]:
     """
-    'Crobar - Palermo'  → ('Crobar', 'Palermo')
-    'Crobar'            → ('Crobar', None)
+    'Crobar - Palermo' → ('Crobar', 'Palermo')
+    'Crobar'           → ('Crobar', None)
     """
     if not venue_str:
         return "Desconocido", None
     parts = venue_str.split(" - ", 1)
-    name = parts[0].strip()
-    neighborhood = parts[1].strip() if len(parts) > 1 else None
+    name = fix_encoding(parts[0].strip())
+    neighborhood = fix_encoding(parts[1].strip()) if len(parts) > 1 else None
     return name, neighborhood
 
+
+# ─── Get or create helpers ────────────────────────────────────────────────────
 
 def get_or_create_source(db: Session) -> Source:
     source = db.query(Source).filter_by(name="jodify").first()
@@ -92,10 +98,12 @@ def get_or_create_source(db: Session) -> Source:
 def get_or_create_venue(db: Session, venue_str: str | None, city_id: str | None) -> Venue:
     name, neighborhood = parse_venue_parts(venue_str)
 
-    # Buscamos por nombre + barrio
+    # Buscar por nombre + city_id para evitar duplicados cross-ciudad
+    city_uuid = uuid.UUID(city_id) if city_id else None
+
     query = db.query(Venue).filter(Venue.name == name)
-    if neighborhood:
-        query = query.filter(Venue.neighborhood == neighborhood)
+    if city_uuid:
+        query = query.filter(Venue.city_id == city_uuid)
     venue = query.first()
 
     if not venue:
@@ -104,20 +112,26 @@ def get_or_create_venue(db: Session, venue_str: str | None, city_id: str | None)
             name=name,
             neighborhood=neighborhood,
             country="Argentina",
+            city_id=city_uuid,
         )
         db.add(venue)
         db.flush()
+    else:
+        # Actualizar neighborhood si no lo tenía
+        if neighborhood and not venue.neighborhood:
+            venue.neighborhood = neighborhood
 
     return venue
 
 
 def get_or_create_dj(db: Session, name: str, cache: dict) -> DJ:
-    key = name.strip().lower()
+    clean_name = fix_encoding(name.strip())
+    key = clean_name.lower()
     if key in cache:
         return cache[key]
-    dj = db.query(DJ).filter(DJ.name == name.strip()).first()
+    dj = db.query(DJ).filter(DJ.name == clean_name).first()
     if not dj:
-        dj = DJ(id=uuid.uuid4(), name=name.strip())
+        dj = DJ(id=uuid.uuid4(), name=clean_name)
         db.add(dj)
         db.flush()
     cache[key] = dj
@@ -125,19 +139,20 @@ def get_or_create_dj(db: Session, name: str, cache: dict) -> DJ:
 
 
 def get_or_create_genre(db: Session, name: str, cache: dict) -> Genre:
-    slug = slugify(name)
+    clean_name = fix_encoding(name.strip())
+    slug = slugify(clean_name)
     if slug in cache:
         return cache[slug]
     genre = db.query(Genre).filter(Genre.slug == slug).first()
     if not genre:
-        genre = Genre(id=uuid.uuid4(), name=name.strip(), slug=slug)
+        genre = Genre(id=uuid.uuid4(), name=clean_name, slug=slug)
         db.add(genre)
         db.flush()
     cache[slug] = genre
     return genre
 
 
-# ─── Pipeline principal ──────────────────────────────────────────────────────
+# ─── Pipeline principal ───────────────────────────────────────────────────────
 
 def load_events(events: list[dict]) -> None:
     db: Session = SessionLocal()
@@ -156,8 +171,10 @@ def load_events(events: list[dict]) -> None:
                 if not external_id:
                     continue
 
+                city_id = raw.get("city_id")
+
                 # Venue
-                venue = get_or_create_venue(db, raw.get("venue"), raw.get("city_id"))
+                venue = get_or_create_venue(db, raw.get("venue"), city_id)
 
                 # Precios
                 min_price, max_price = parse_prices(raw.get("price"))
@@ -168,12 +185,10 @@ def load_events(events: list[dict]) -> None:
                     event_type = "sunset"
                 elif sunset_after == "AFTER":
                     event_type = "after"
-                elif raw.get("coffee_rave"):
-                    event_type = "party"
                 else:
                     event_type = "party"
 
-                # image_url
+                # image
                 image = raw.get("image") or {}
                 flyer_url = (
                     image.get("flyer")
@@ -181,17 +196,17 @@ def load_events(events: list[dict]) -> None:
                     or image.get("banner")
                 )
 
-                # Buscar evento existente por external_id
+                # Buscar evento existente
                 event = db.query(Event).filter_by(external_id=external_id).first()
 
                 if event:
-                    # Actualizar campos que pueden cambiar
-                    event.name = raw["name"]
+                    event.name = fix_encoding(raw["name"])
                     event.min_price = min_price
                     event.max_price = max_price
                     event.is_active = raw.get("is_active", True)
                     event.flyer_url = flyer_url
-                    event.description = raw.get("description")
+                    event.description = fix_encoding(raw.get("description"))
+                    event.venue_id = venue.id
                     updated += 1
                 else:
                     event = Event(
@@ -199,8 +214,8 @@ def load_events(events: list[dict]) -> None:
                         external_id=external_id,
                         source_id=source.id,
                         venue_id=venue.id,
-                        name=raw["name"],
-                        description=raw.get("description"),
+                        name=fix_encoding(raw["name"]),
+                        description=fix_encoding(raw.get("description")),
                         date_from=raw["date_from"],
                         date_to=raw.get("date_to"),
                         min_price=min_price,
@@ -216,7 +231,7 @@ def load_events(events: list[dict]) -> None:
                     db.flush()
                     inserted += 1
 
-                # DJs — borramos los existentes y re-insertamos
+                # DJs
                 db.query(EventDJ).filter_by(event_id=event.id).delete()
                 for i, dj_data in enumerate(raw.get("djs") or []):
                     dj_name = dj_data.get("name", "").strip()
@@ -230,7 +245,7 @@ def load_events(events: list[dict]) -> None:
                         order=i,
                     ))
 
-                # Géneros — borramos los existentes y re-insertamos
+                # Géneros
                 db.query(EventGenre).filter_by(event_id=event.id).delete()
                 for i, type_data in enumerate(raw.get("types") or []):
                     genre_name = type_data.get("name", "").strip()
@@ -247,7 +262,6 @@ def load_events(events: list[dict]) -> None:
                 log.warning("Error procesando evento %s: %s", raw.get("id"), exc)
                 db.rollback()
                 errors += 1
-                # Re-obtenemos source después del rollback
                 source = get_or_create_source(db)
                 continue
 
@@ -263,7 +277,7 @@ def load_events(events: list[dict]) -> None:
         db.close()
 
 
-# ─── Main ────────────────────────────────────────────────────────────────────
+# ─── Main ─────────────────────────────────────────────────────────────────────
 
 def main():
     log.info("Leyendo %s…", EVENTS_FILE)
