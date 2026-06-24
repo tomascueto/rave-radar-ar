@@ -207,6 +207,7 @@ def load_events(events: list[dict]) -> None:
                     event.flyer_url = flyer_url
                     event.description = fix_encoding(raw.get("description"))
                     event.venue_id = venue.id
+                    event.city_id = uuid.UUID(city_id) if city_id else None
                     updated += 1
                 else:
                     event = Event(
@@ -214,6 +215,7 @@ def load_events(events: list[dict]) -> None:
                         external_id=external_id,
                         source_id=source.id,
                         venue_id=venue.id,
+                        city_id=uuid.UUID(city_id) if city_id else None,
                         name=fix_encoding(raw["name"]),
                         description=fix_encoding(raw.get("description")),
                         date_from=raw["date_from"],
