@@ -10,6 +10,11 @@ Particularidad: algunas páginas incluyen texto libre antes del JSON (ej.
 descripciones de eventos con el formato `2:Tlen,texto...1:[...]`). El parser
 maneja esto buscando el patrón `1:[` en cualquier posición del texto.
 
+Particularidad 2: la paginación arranca en page=0, no en page=1. La página 0
+contiene la primera tanda de eventos (los mismos que se ven al cargar
+/events sin hacer scroll, que Next.js normalmente pre-renderiza en el HTML
+inicial). Si se arranca en page=1, esos eventos se pierden silenciosamente.
+
 Uso:
     python -m scraper.sources.jodify
     python -m scraper.sources.jodify --output data/eventos.json
@@ -73,7 +78,8 @@ CITIES_ENCODED = CITIES_PARAM.replace(",", "%2C")
 
 # Token del Server Action de Next.js — puede cambiar si Jodify redeploya.
 # Si el scraper deja de funcionar, revisar este valor en las DevTools del browser.
-NEXT_ACTION_TOKEN = "7fb08ab6c709e78b085aa025f4739302081cbf340c"
+# Actualizado: 11/07/2026
+NEXT_ACTION_TOKEN = "7f44163fe3baba8435ef23d9ce8534907bda26d211"
 
 REQUEST_HEADERS: dict[str, str] = {
     "accept": "text/x-component",
@@ -92,11 +98,12 @@ REQUEST_HEADERS: dict[str, str] = {
     "user-agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
         "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
+        "Chrome/150.0.0.0 Safari/537.36"
     ),
 }
 
 # Parámetros de paginación y red
+START_PAGE = 0          # la paginación de Jodify arranca en 0, no en 1
 MAX_PAGES = 100          # techo de seguridad
 REQUEST_TIMEOUT = 20     # segundos
 RETRY_TOTAL = 3
@@ -216,6 +223,10 @@ def fetch_all_events() -> list[dict[str, Any]]:
     """
     Itera las páginas del Server Action de Jodify y devuelve todos los eventos.
 
+    La paginación arranca en page=0 (no en 1): la página 0 contiene la
+    primera tanda de eventos, la misma que se ve al cargar /events sin
+    hacer scroll. Arrancar en page=1 salta esa primera tanda silenciosamente.
+
     Detiene la paginación cuando:
     - La página no devuelve eventos nuevos (duplicados o vacío).
     - El status HTTP no es 200.
@@ -228,7 +239,7 @@ def fetch_all_events() -> list[dict[str, Any]]:
     session = _build_session()
 
     all_events: dict[str, dict[str, Any]] = {}  # id → evento
-    page = 1
+    page = START_PAGE
 
     logger.info("Iniciando scraping de Jodify (%d ciudades)…", len(CITIES_IDS))
 
