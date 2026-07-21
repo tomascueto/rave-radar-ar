@@ -57,6 +57,7 @@ class Venue(Base):
     province = Column(String(100))
     country = Column(String(100), default="Argentina")
     coordinates = Column(Geometry("POINT", srid=4326))
+    precision = Column(String(20), default="unknown")
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
