@@ -1,11 +1,17 @@
 """
 Geocodifica venues sin coordenadas usando Nominatim (OpenStreetMap).
 
-Estrategia por venue:
-  1. Query: "{name}, {neighborhood}, {ciudad}, Argentina"
-  2. Si Nominatim devuelve resultado específico (type != country/state) → usar
-  3. Si no → fallback a coordenadas de la ciudad del venue
-  4. Si no hay ciudad → queda sin coordenadas
+Estrategia de 2 pasos por venue:
+  1. nombre + ciudad (limpiando nombres de ciudad que Nominatim no entiende bien)
+  2. nombre + neighborhood
+
+Guarda el resultado en venues.precision:
+  - 'exact'   → Nominatim devolvió un resultado específico (no genérico)
+  - 'city'    → fallback a las coordenadas del centro de la ciudad
+  - 'unknown' → no se pudo geocodificar ni hacer fallback (sin city_id)
+
+Solo procesa venues con coordinates IS NULL (o precision = 'unknown'),
+para no volver a pegarle a Nominatim a los que ya están resueltos.
 
 Límite Nominatim: 1 request/segundo.
 """
@@ -31,15 +37,30 @@ NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 NOMINATIM_HEADERS = {
     "User-Agent": "RaveRadarAR/1.0 (proyecto universitario UNS)"
 }
-DELAY = 1.1
+DELAY = 1.1  # segundos entre requests (Nominatim límite: 1/seg)
 
 GENERIC_TYPES = {
     "country", "state", "province", "region",
     "city", "town", "village", "suburb", "neighbourhood",
 }
 
+# Nombres de ciudad que Nominatim no interpreta bien tal cual vienen de Jodify
+CITY_NAME_MAP = {
+    "CABA | GBA": "Buenos Aires",
+    "Prov. de Buenos Aires": "Buenos Aires",
+    "Santa Fe | Paraná": "Santa Fe",
+    "Pinamar | Villa Gesell": "Pinamar",
+    "Tierra Del Fuego": "Ushuaia",
+    "Río Negro": "Bariloche",
+}
+
+
+def clean_city_name(name: str) -> str:
+    return CITY_NAME_MAP.get(name, name)
+
 
 def geocode(query: str) -> tuple[float, float, str] | None:
+    """Consulta Nominatim y devuelve (lat, lng, type) o None si no hay resultado."""
     params = {
         "q": query,
         "format": "json",
@@ -64,9 +85,14 @@ def geocode(query: str) -> tuple[float, float, str] | None:
         return None
 
 
-def set_coordinates(venue: Venue, lat: float, lng: float) -> None:
+def is_specific(result_type: str) -> bool:
+    return result_type not in GENERIC_TYPES
+
+
+def set_coordinates(venue: Venue, lat: float, lng: float, precision: str) -> None:
     point_wkt = f"POINT({lng} {lat})"
     venue.coordinates = ST_GeomFromText(point_wkt, 4326)
+    venue.precision = precision
 
 
 def geocode_venues() -> None:
@@ -78,57 +104,57 @@ def geocode_venues() -> None:
             .all()
         )
 
-        # DEBUG: solo primeras 20
-        venues_sin_coords = venues_sin_coords[:20]
-
         total = len(venues_sin_coords)
         log.info("Venues sin coordenadas: %d", total)
 
-        # Precargamos city_id → city para no hacer queries en el loop
         city_map = {str(c.id): c for c in db.query(City).all()}
 
-        geocoded = 0
-        fallback = 0
-        sin_coords = 0
+        exact = 0
+        city_fallback = 0
+        unknown = 0
 
         for i, venue in enumerate(venues_sin_coords, 1):
-            # Construir query con nombre + barrio + ciudad + país
-            parts = [venue.name]
-            if venue.neighborhood:
-                parts.append(venue.neighborhood)
             city = city_map.get(str(venue.city_id)) if venue.city_id else None
-            if city:
-                parts.append(city.name)
-            parts.append("Argentina")
-            query = ", ".join(parts)
+            city_name = clean_city_name(city.name) if city else None
+            result = None
 
-            log.info("Query [%d/%d]: %s", i, total, query)
-            result = geocode(query)
+            # Paso 1: nombre + ciudad limpia
+            if city_name:
+                query1 = f"{venue.name}, {city_name}, Argentina"
+                result = geocode(query1)
+                time.sleep(DELAY)
+                if result and not is_specific(result[2]):
+                    result = None
+
+            # Paso 2: nombre + neighborhood
+            if not result and venue.neighborhood:
+                query2 = f"{venue.name}, {venue.neighborhood}, Argentina"
+                result = geocode(query2)
+                time.sleep(DELAY)
+                if result and not is_specific(result[2]):
+                    result = None
 
             if result:
                 lat, lng, result_type = result
-                log.info("  → type: %s | (%.4f, %.4f)", result_type, lat, lng)
-                if result_type not in GENERIC_TYPES:
-                    set_coordinates(venue, lat, lng)
-                    geocoded += 1
-                else:
-                    log.info("  → genérico, usando fallback")
-                    result = None
+                set_coordinates(venue, lat, lng, precision="exact")
+                exact += 1
+                log.debug("✅ %s → (%.4f, %.4f) [%s]", venue.name, lat, lng, result_type)
+            elif city and city.latitude and city.longitude:
+                set_coordinates(venue, city.latitude, city.longitude, precision="city")
+                city_fallback += 1
+                log.debug("🏙️  %s → fallback %s", venue.name, city.name)
+            else:
+                venue.precision = "unknown"
+                unknown += 1
 
-            if not result:
-                if city and city.latitude and city.longitude:
-                    set_coordinates(venue, city.latitude, city.longitude)
-                    fallback += 1
-                    log.info("  → fallback ciudad: %s", city.name)
-                else:
-                    sin_coords += 1
-                    log.info("  → sin coordenadas")
-
-            time.sleep(DELAY)
+            if i % 20 == 0:
+                db.commit()
+                log.info("Progreso: %d/%d | exact: %d | city: %d | unknown: %d",
+                         i, total, exact, city_fallback, unknown)
 
         db.commit()
-        log.info("✅ Finalizado — geocoded: %d | fallback ciudad: %d | sin coordenadas: %d",
-                 geocoded, fallback, sin_coords)
+        log.info("✅ Finalizado — exact: %d | city: %d | unknown: %d",
+                 exact, city_fallback, unknown)
 
     except Exception as e:
         db.rollback()
