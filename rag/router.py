@@ -36,7 +36,6 @@ CHEAP_PERCENTILE_QUERY = """
     FROM events
     WHERE is_active = true AND max_price IS NOT NULL
 """
-CHEAP_STEMS = ["barat", "econom", "accesible"]
 
 _ORDINALES = {
     "primer": 1, "primero": 1, "segundo": 2, "tercer": 3, "tercero": 3,
@@ -99,22 +98,52 @@ def _interpret_ordinal_date(expr: str, base: datetime) -> datetime | None:
         result = _nth_weekday_of_month(base.year + 1, month, weekday, n)
     return result
 
+def _interpret_weekend(expr: str, base: datetime) -> tuple[datetime, datetime] | None:
+    """Calcula el rango de fechas para 'este finde' o 'el finde que viene'."""
+    expr = expr.lower()
+    if "finde" not in expr and "fin de semana" not in expr:
+        return None
+        
+    # Python weekdays: 0=Lunes, 4=Viernes, 5=Sábado, 6=Domingo
+    # Si hoy es de Lunes a Viernes, buscamos el viernes de esta semana
+    if base.weekday() <= 4:
+        days_to_friday = 4 - base.weekday()
+        start = base + timedelta(days=days_to_friday)
+    elif base.weekday() == 5: # Si ya es Sábado, el "finde" empezó ayer
+        start = base - timedelta(days=1)
+    else: # Si ya es Domingo, el "finde" empezó hace dos días
+        start = base - timedelta(days=2)
+        
+    start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # En la joda, el finde cubre Viernes, Sábado y Domingo. 
+    # Termina el Lunes a las 08:00 AM.
+    end = start + timedelta(days=3, hours=8)
+    
+    # Si el usuario pide "el finde que viene", simplemente pateamos todo 7 días
+    if "viene" in expr or "proximo" in expr or "próximo" in expr:
+        start += timedelta(days=7)
+        end += timedelta(days=7)
+        
+    return start, end
 
 def interpret_date(date_expr: str | None) -> tuple[datetime, datetime] | None:
-    """
-    Convierte una expresión relativa de fecha en un rango (inicio, fin).
-    Dos capas, ambas determinísticas:
-      1. search_dates() (dateparser) — cubre expresiones simples
-         ("este sábado", "mañana", "el 5 de octubre").
-      2. Cálculo ordinal propio — cubre "el segundo sábado de septiembre",
-         "último viernes de octubre", que dateparser no reconoce.
-    Si ninguna resuelve la expresión, devuelve None: el filtro simplemente
-    no se aplica, en vez de forzar una interpretación dudosa.
-    """
     if not date_expr:
         return None
 
     base = datetime.now()
+    
+    # 1. Atajar el "finde" (nuestra lógica dura)
+    weekend_range = _interpret_weekend(date_expr, base)
+    if weekend_range:
+        return weekend_range
+
+    # 2. Atajar rangos amplios ("próximas semanas", "este mes")
+    broad_range = _interpret_broad_ranges(date_expr, base)
+    if broad_range:
+        return broad_range
+
+    # 3. Recién acá usamos dateparser para fechas exactas ("mañana", "el 15 de octubre")
     results = search_dates(
         date_expr,
         languages=["es"],
@@ -126,28 +155,44 @@ def interpret_date(date_expr: str | None) -> tuple[datetime, datetime] | None:
         return None
 
     start = parsed.replace(hour=0, minute=0, second=0)
-    end = start + timedelta(days=1)
+    end = start + timedelta(days=1, hours=8)
     return start, end
 
 
-def interpret_price(price_expr: str | None, db: Session) -> float | None:
-    if not price_expr:
+def interpret_price(price_expr: str | None, wants_cheap: bool, db: Session) -> float | None:
+    if not price_expr and not wants_cheap:
         return None
 
-    numbers = re.findall(r"\d[\d.,]*\d|\d", price_expr.replace(".", "").replace(",", ""))
-    if numbers:
-        try:
-            return float(numbers[0])
-        except ValueError:
-            pass
+    if price_expr:
+        numbers = re.findall(r"\d[\d.,]*\d|\d", price_expr.replace(".", "").replace(",", ""))
+        if numbers:
+            try:
+                return float(numbers[0])
+            except ValueError:
+                pass
 
-    if any(stem in price_expr.lower() for stem in CHEAP_STEMS):
+    if wants_cheap:
         row = db.execute(text(CHEAP_PERCENTILE_QUERY)).first()
         if row and row.umbral:
             return float(row.umbral)
 
     return None
 
+def _interpret_broad_ranges(expr: str, base: datetime) -> tuple[datetime, datetime] | None:
+    """Calcula rangos de tiempo amplios que dateparser suele romper."""
+    expr = expr.lower()
+    start = base.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    if "semanas" in expr or "mes" in expr:
+        if "mes" in expr:
+            # Si pide "este mes" o "próximo mes", abrimos la ventana a 30 días
+            end = start + timedelta(days=30)
+        elif "semanas" in expr:
+            # Si pide "próximas semanas", abrimos la ventana a 21 días (3 semanas)
+            end = start + timedelta(days=21)
+        return start, end
+        
+    return None    
 
 def route_from_segments(db: Session, segmented: dict) -> RouteResult:
     """
@@ -182,7 +227,8 @@ def route_from_segments(db: Session, segmented: dict) -> RouteResult:
     if date_range:
         filters["date_from_start"], filters["date_from_end"] = date_range
 
-    max_price = interpret_price(segmented.get("price_expr"), db)
+
+    max_price = interpret_price(segmented.get("price_expr"), segmented.get("wants_cheap", False), db)
     if segmented.get("price_expr") and max_price is None:
         filters.setdefault("unresolved_expressions", []).append(
             f"precio: '{segmented['price_expr']}'"
