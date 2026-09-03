@@ -8,10 +8,11 @@ const DEFAULT_CENTER = [-34.6037, -58.3816];
 const DEFAULT_ZOOM = 12;
 
 // Tiles estilo "Uber": limpio, minimalista, sin saturacion de colores
-const TILE_URL = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY;
+const TILE_URL = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${CARTO_API_KEY}`;
 const TILE_ATTRIBUTION =
-  'Tiles &copy; Esri &mdash; Esri, HERE, Garmin, © OpenStreetMap contributors, and the GIS user community';
-
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+  
 // Color segun la confianza real de la coordenada (campo `precision` del venue).
 function markerStyle(precision) {
   switch (precision) {
@@ -71,7 +72,7 @@ export default function Map() {
         zoom={DEFAULT_ZOOM}
         className="h-full w-full"
       >
-        <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+        <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} maxZoom={20} />
 
         {events.map((ev) => (
           <Marker
