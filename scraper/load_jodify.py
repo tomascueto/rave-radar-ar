@@ -1,11 +1,25 @@
 """
 Pipeline de carga: lee events_raw.json e inserta en PostgreSQL.
+
 Estrategia:
   - Source:  upsert por nombre
-  - Venue:   upsert por (nombre + city_id) — evita duplicados cross-ciudad
+  - Venue:   upsert por (nombre + city_id) -- evita duplicados cross-ciudad
   - Event:   upsert por external_id
   - DJ:      upsert por nombre normalizado
   - Genre:   upsert por slug normalizado
+
+Nota de diseno (commit por evento, no al final):
+  Cada evento se confirma (db.commit()) individualmente apenas termina de
+  procesarse. Esto es deliberado: dj_cache y genre_cache son diccionarios en
+  memoria que persisten durante toda la corrida, y si un evento falla y se
+  hace db.rollback() sobre una transaccion que todavia contiene el trabajo
+  de eventos ANTERIORES ya "exitosos" (solo flush, sin commit), ese rollback
+  los deshace a todos -- pero las caches en memoria no se enteran, y siguen
+  devolviendo ids de DJs/generos que ya no existen en la base. El resultado
+  es una cascada de ForeignKeyViolation en eventos completamente
+  desvinculados del que realmente fallo. Confirmar evento por evento acota
+  el alcance de cualquier rollback a, como mucho, lo creado DURANTE ese
+  mismo evento.
 """
 
 import json
@@ -33,10 +47,10 @@ log = logging.getLogger(__name__)
 EVENTS_FILE = Path("events_raw.json")
 
 
-# ─── Helpers ─────────────────────────────────────────────────────────────────
+# --- Helpers -----------------------------------------------------------------
 
 def fix_encoding(text: str | None) -> str | None:
-    """Repara texto con encoding roto: 'CÃ³rdoba' → 'Córdoba'."""
+    """Repara texto con encoding roto: 'CÃ³rdoba' -> 'Córdoba'."""
     if not text:
         return text
     return ftfy.fix_text(text)
@@ -67,8 +81,8 @@ def parse_prices(price_list: list | None) -> tuple[Decimal | None, Decimal | Non
 
 def parse_venue_parts(venue_str: str | None) -> tuple[str, str | None]:
     """
-    'Crobar - Palermo' → ('Crobar', 'Palermo')
-    'Crobar'           → ('Crobar', None)
+    'Crobar - Palermo' -> ('Crobar', 'Palermo')
+    'Crobar'           -> ('Crobar', None)
     """
     if not venue_str:
         return "Desconocido", None
@@ -78,7 +92,7 @@ def parse_venue_parts(venue_str: str | None) -> tuple[str, str | None]:
     return name, neighborhood
 
 
-# ─── Get or create helpers ────────────────────────────────────────────────────
+# --- Get or create helpers ----------------------------------------------------
 
 def get_or_create_source(db: Session) -> Source:
     source = db.query(Source).filter_by(name="jodify").first()
@@ -97,15 +111,11 @@ def get_or_create_source(db: Session) -> Source:
 
 def get_or_create_venue(db: Session, venue_str: str | None, city_id: str | None) -> Venue:
     name, neighborhood = parse_venue_parts(venue_str)
-
-    # Buscar por nombre + city_id para evitar duplicados cross-ciudad
     city_uuid = uuid.UUID(city_id) if city_id else None
-
     query = db.query(Venue).filter(Venue.name == name)
     if city_uuid:
         query = query.filter(Venue.city_id == city_uuid)
     venue = query.first()
-
     if not venue:
         venue = Venue(
             id=uuid.uuid4(),
@@ -117,10 +127,8 @@ def get_or_create_venue(db: Session, venue_str: str | None, city_id: str | None)
         db.add(venue)
         db.flush()
     else:
-        # Actualizar neighborhood si no lo tenía
         if neighborhood and not venue.neighborhood:
             venue.neighborhood = neighborhood
-
     return venue
 
 
@@ -152,34 +160,35 @@ def get_or_create_genre(db: Session, name: str, cache: dict) -> Genre:
     return genre
 
 
-# ─── Pipeline principal ───────────────────────────────────────────────────────
+# --- Pipeline principal --------------------------------------------------------
 
 def load_events(events: list[dict]) -> None:
     db: Session = SessionLocal()
     try:
         source = get_or_create_source(db)
+        db.commit()  # la Source queda confirmada antes de arrancar el loop
+
         dj_cache: dict = {}
         genre_cache: dict = {}
-
         inserted = 0
         updated = 0
         errors = 0
 
         for raw in events:
+            # Snapshot de que claves de cache existian ANTES de este evento,
+            # para poder revertirlas puntualmente si este evento falla.
+            dj_cache_keys_before = set(dj_cache.keys())
+            genre_cache_keys_before = set(genre_cache.keys())
+
             try:
                 external_id = raw.get("id")
                 if not external_id:
                     continue
 
                 city_id = raw.get("city_id")
-
-                # Venue
                 venue = get_or_create_venue(db, raw.get("venue"), city_id)
-
-                # Precios
                 min_price, max_price = parse_prices(raw.get("price"))
 
-                # event_type
                 sunset_after = (raw.get("sunset_after") or "").upper()
                 if sunset_after == "SUNSET":
                     event_type = "sunset"
@@ -188,7 +197,6 @@ def load_events(events: list[dict]) -> None:
                 else:
                     event_type = "party"
 
-                # image
                 image = raw.get("image") or {}
                 flyer_url = (
                     image.get("flyer")
@@ -196,9 +204,7 @@ def load_events(events: list[dict]) -> None:
                     or image.get("banner")
                 )
 
-                # Buscar evento existente
                 event = db.query(Event).filter_by(external_id=external_id).first()
-
                 if event:
                     event.name = fix_encoding(raw["name"])
                     event.min_price = min_price
@@ -233,7 +239,6 @@ def load_events(events: list[dict]) -> None:
                     db.flush()
                     inserted += 1
 
-                # DJs
                 db.query(EventDJ).filter_by(event_id=event.id).delete()
                 for i, dj_data in enumerate(raw.get("djs") or []):
                     dj_name = dj_data.get("name", "").strip()
@@ -247,7 +252,6 @@ def load_events(events: list[dict]) -> None:
                         order=i,
                     ))
 
-                # Géneros
                 db.query(EventGenre).filter_by(event_id=event.id).delete()
                 for i, type_data in enumerate(raw.get("types") or []):
                     genre_name = type_data.get("name", "").strip()
@@ -260,17 +264,31 @@ def load_events(events: list[dict]) -> None:
                         is_primary=(i == 0),
                     ))
 
+                # Confirmamos ESTE evento de forma aislada. Si el proximo
+                # evento falla, su rollback solo puede afectar a lo que ese
+                # proximo evento haya hecho -- nunca a este, que ya quedo
+                # durablemente confirmado.
+                db.commit()
+
             except Exception as exc:
                 log.warning("Error procesando evento %s: %s", raw.get("id"), exc)
                 db.rollback()
                 errors += 1
-                source = get_or_create_source(db)
+
+                # El rollback deshizo cualquier DJ/genero nuevo creado
+                # DURANTE este evento en particular -- hay que sacarlo
+                # tambien de la cache en memoria, o un evento posterior que
+                # lo reutilice va a fallar con ForeignKeyViolation contra
+                # una fila que ya no existe.
+                for key in (dj_cache.keys() - dj_cache_keys_before):
+                    del dj_cache[key]
+                for key in (genre_cache.keys() - genre_cache_keys_before):
+                    del genre_cache[key]
+
                 continue
 
-        db.commit()
         log.info("✅ Carga finalizada — insertados: %d | actualizados: %d | errores: %d",
                  inserted, updated, errors)
-
     except Exception as exc:
         db.rollback()
         log.error("Error fatal: %s", exc)
@@ -279,7 +297,7 @@ def load_events(events: list[dict]) -> None:
         db.close()
 
 
-# ─── Main ─────────────────────────────────────────────────────────────────────
+# --- Main -----------------------------------------------------------------------
 
 def main():
     log.info("Leyendo %s…", EVENTS_FILE)

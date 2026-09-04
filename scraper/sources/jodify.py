@@ -79,7 +79,7 @@ CITIES_ENCODED = CITIES_PARAM.replace(",", "%2C")
 # Token del Server Action de Next.js — puede cambiar si Jodify redeploya.
 # Si el scraper deja de funcionar, revisar este valor en las DevTools del browser.
 # Actualizado: 11/07/2026
-NEXT_ACTION_TOKEN = "7f44163fe3baba8435ef23d9ce8534907bda26d211"
+NEXT_ACTION_TOKEN = "7f1449081d751ad2dbf6b07d9b484580baf145e38c"
 
 REQUEST_HEADERS: dict[str, str] = {
     "accept": "text/x-component",
