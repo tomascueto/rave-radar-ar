@@ -15,7 +15,7 @@ Uso:
     -> http://localhost:8000/api/events/map
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import FastAPI
@@ -70,7 +70,7 @@ def get_map_events():
                 joinedload(Event.venue),
                 joinedload(Event.genres).joinedload(EventGenre.genre),
             )
-            .filter(Event.is_active == True)
+            .filter(Event.date_from >= datetime.now(timezone.utc))            
             .all()
         )
 
