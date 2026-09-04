@@ -283,10 +283,6 @@ def fetch_all_events() -> list[dict[str, Any]]:
             len(all_events),
         )
 
-        if new_count == 0:
-            logger.info("Sin eventos nuevos → fin de paginación.")
-            break
-
         page += 1
         time.sleep(DELAY_BETWEEN_PAGES)
 
