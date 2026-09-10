@@ -236,8 +236,18 @@ def route_from_segments(db: Session, segmented: dict) -> RouteResult:
     if max_price is not None:
         filters["max_price"] = max_price
 
+    location_expr = segmented.get("location_expr")
+    location_unresolved = bool(location_expr)
+    if location_unresolved:
+        filters.setdefault("unresolved_expressions", []).append(
+            f"ubicación: '{location_expr}'"
+        )
+
     free_text_parts = [segmented.get("free_text", "")] + resolved["unresolved"]
     semantic_text = " ".join(p for p in free_text_parts if p).strip()
+
+    if location_unresolved:
+        return RouteResult(strategy="empty", filters=filters)
 
     if not semantic_text:
         return RouteResult(strategy="sql", filters=filters)

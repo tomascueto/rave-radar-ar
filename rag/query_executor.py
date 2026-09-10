@@ -138,6 +138,9 @@ def execute(
     client: QdrantClient | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[Event]:
+    if route_result.strategy == "empty":
+        return []
+
     if route_result.strategy == "sql":
         return execute_sql(db, route_result.filters, limit=limit)
 
