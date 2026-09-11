@@ -4,16 +4,16 @@ API de Rave Radar AR: mapa interactivo + chat.
 Dos endpoints:
   GET  /api/events/map  -> eventos con coordenadas para pintar en el mapa,
                             con filtro de fecha opcional (estructural, sin LLM)
-  POST /api/chat         -> pipeline completo del chatbot: segmenta la
-                            consulta, resuelve entidades, ejecuta la busqueda
-                            (SQL o Qdrant), y genera la respuesta en lenguaje
-                            natural. Devuelve el texto Y los eventos
-                            recomendados (en el mismo formato que el mapa),
-                            para que el frontend pueda actualizar los pines
-                            con lo que el chat recomendo.
+  POST /api/chat         -> ejecuta el agente formal (rag/agent.py, grafo de
+                            LangGraph) que encadena segmentacion, resolucion
+                            de entidades, ejecucion de la busqueda (SQL o
+                            Qdrant) y generacion de la respuesta. Devuelve el
+                            texto Y los eventos recomendados (en el mismo
+                            formato que el mapa), para que el frontend pueda
+                            actualizar los pines con lo que el chat recomendo.
 
-Nota sobre serializacion (ver comentarios originales): UUID -> string,
-datetime -> ISO 8601, Geometry(PostGIS) -> (lat, lng).
+Nota sobre serializacion: UUID -> string, datetime -> ISO 8601,
+Geometry(PostGIS) -> (lat, lng).
 
 Uso:
     uvicorn api_events:app --reload
@@ -33,9 +33,7 @@ from sqlalchemy.orm import joinedload
 
 from database.connection import SessionLocal
 from database.models import Event, EventGenre
-from rag.query_executor import execute
-from rag.response_generator import generate_response
-from rag.router import route_query
+from rag.agent import run_agent
 
 app = FastAPI(title="Rave Radar AR - API")
 
@@ -89,9 +87,7 @@ def _extract_coords(venue) -> tuple[float | None, float | None]:
 def _event_to_map_event(ev: Event) -> MapEvent | None:
     """
     Convierte un Event de SQLAlchemy al formato que consumen el mapa y el
-    chat. Devuelve None si el evento no tiene venue o coordenadas -- mismo
-    criterio de descarte que ya usaba /api/events/map, factorizado aca para
-    no duplicarlo entre los dos endpoints.
+    chat. Devuelve None si el evento no tiene venue o coordenadas.
     """
     if ev.venue is None:
         return None
@@ -148,22 +144,16 @@ def get_map_events(date_from: datetime | None = None, date_to: datetime | None =
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
     """
-    Pipeline completo: segmentar -> resolver entidades -> ejecutar
-    (SQL o Qdrant) -> generar respuesta. Si algo falla (por ejemplo, cuota
-    de Gemini agotada), devuelve un mensaje de error legible en vez de un
-    500 crudo -- el frontend siempre recibe una respuesta con la misma forma.
+    Ejecuta el agente formal de LangGraph (rag/agent.py): segmentar -> rutear
+    -> ejecutar (arista condicional: SQL / Qdrant / vacio) -> generar. Si
+    algo falla (por ejemplo, cuota de Gemini agotada), devuelve un mensaje
+    de error legible en vez de un 500 crudo.
     """
     db = SessionLocal()
     try:
-        route_result = route_query(db, request.query)
-        events = execute(
-            db, route_result,
-            model=_embedding_model, client=_qdrant_client,
-        )
-        response_text = generate_response(
-            request.query, events,
-            unresolved_expressions=route_result.filters.get("unresolved_expressions"),
-        )
+        final_state = run_agent(db, _embedding_model, _qdrant_client, request.query)
+        events = final_state["events"]
+        response_text = final_state["response_text"]
 
         map_events = []
         for ev in events:
@@ -171,7 +161,7 @@ def chat(request: ChatRequest):
             if me is not None:
                 map_events.append(me)
 
-        print(f"[/api/chat] query: {request.query!r} | estrategia: {route_result.strategy} | "
+        print(f"[/api/chat] query: {request.query!r} | estrategia: {final_state['strategy']} | "
               f"eventos: {len(events)} | con coordenadas: {len(map_events)}")
 
         return ChatResponse(response_text=response_text, events=map_events)
