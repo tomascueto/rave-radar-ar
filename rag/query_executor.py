@@ -14,6 +14,7 @@ a interpretar nada.
 
 from __future__ import annotations
 
+from sqlalchemy.sql import func
 from sqlalchemy.orm import Session, joinedload
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -57,12 +58,27 @@ def execute_sql(db: Session, filters: dict, limit: int = DEFAULT_LIMIT) -> list[
     if "genre_slugs" in filters:
         query = query.join(EventGenre).join(Genre).filter(Genre.slug.in_(filters["genre_slugs"]))
 
-    return (
+    # Muestreo aleatorio, no cronologico: si la cantidad de eventos que
+    # matchean supera el limite, ordenar por fecha y cortar sesga
+    # sistematicamente hacia el dia mas proximo con mas eventos (ej: un
+    # viernes con 35 eventos se come todo el cupo de 20, dejando afuera
+    # sabado y domingo por completo, aunque el rango pedido incluia los
+    # tres dias). func.random() le da a cada evento que matchea la misma
+    # probabilidad de quedar seleccionado, sin importar en que dia caiga.
+    events = (
         query.distinct()
-        .order_by(Event.date_from.asc())
+        .order_by(func.random())
         .limit(limit)
         .all()
     )
+
+    # Una vez elegida la muestra, se ordena cronologicamente para la
+    # presentacion -- el usuario navegando el carrusel o leyendo la
+    # respuesta espera verlos en orden de fecha, no en el orden aleatorio
+    # interno de la seleccion.
+    events.sort(key=lambda ev: ev.date_from)
+
+    return events
 
 
 # ─── Rama Qdrant ─────────────────────────────────────────────────────────────
@@ -138,6 +154,9 @@ def execute(
     client: QdrantClient | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[Event]:
+    if route_result.strategy == "empty":
+        return []
+
     if route_result.strategy == "sql":
         return execute_sql(db, route_result.filters, limit=limit)
 

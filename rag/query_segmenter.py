@@ -12,9 +12,12 @@ client = genai.Client()
 class QuerySegments(BaseModel):
     entity_candidates: list[str] = Field(description="Nombres propios (DJs, venues, géneros, ciudades) mencionados tal cual aparecen.")
     date_expr: str | None = Field(description="Expresión de fecha si la hay, o null.")
-    price_expr: str | None = Field(description="Expresión de precio tal cual aparece en el texto, o null.")
+    price_expr: str | None = Field(description="Expresión de precio tal cual aparece en el texto. null si no menciona precio, O si dice explícitamente que no le importa (ej: 'cualquier precio', 'no importa cuánto', 'sin límite de presupuesto', 'lo que sea') — en esos casos no hay ninguna restricción real que interpretar, es lo mismo que no haber mencionado precio en absoluto.")
     wants_cheap: bool = Field(
         description="true si el usuario busca algo económico de CUALQUIER forma que lo exprese (barato, sin gastar de más, algo módico). false si no menciona eso o si da un número explícito."
+    )
+    location_expr: str | None = Field(
+        description="Expresión de proximidad o distancia geográfica si la hay, tal cual aparece en el texto (ej: 'cerca de General Roca', 'a menos de 50km de mi ubicación', 'cerca mío', 'el más cercano en distancia'). null si la consulta no pide nada de cercanía/distancia geográfica — mencionar una ciudad o zona sin pedir 'cerca' o una distancia NO cuenta como esto."
     )
     free_text: str = Field(description="Descripciones de onda o estilo. Cadena vacía si no hay.")
 
