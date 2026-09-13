@@ -202,6 +202,62 @@ function EventCarousel({ events, activeIndex, onNext, onPrev }) {
   );
 }
 
+// Mismo lenguaje visual que la tarjeta del carrusel (flyer, tags de genero,
+// boton solido), adaptado al espacio mas chico de un popup de Leaflet: sin
+// bleed de la imagen a los bordes, tipografia mas compacta.
+function PopupContent({ ev }) {
+  return (
+    <div className="w-56">
+      {ev.flyer_url && (
+        <img
+          src={ev.flyer_url}
+          alt={ev.name}
+          className="w-full h-24 object-cover rounded-lg mb-2"
+          onError={(e) => { e.target.style.display = "none"; }}
+        />
+      )}
+      <p className="font-semibold text-sm text-slate-800 leading-snug">{ev.name}</p>
+      <p className="text-sm text-slate-500 mt-0.5">{ev.venue_name}</p>
+      <p className="text-xs text-slate-400 mt-1 capitalize">
+        {new Date(ev.date_from).toLocaleDateString("es-AR", {
+          weekday: "long", day: "2-digit", month: "2-digit",
+        })}
+      </p>
+
+      {ev.genres && ev.genres.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-2">
+          {ev.genres.slice(0, 3).map((g) => (
+            <span
+              key={g}
+              className="text-[10px] px-2 py-0.5 bg-violet-50 text-violet-600 rounded-full font-medium"
+            >
+              {g}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {ev.venue_precision === "city" && (
+        <p className="text-[11px] text-amber-600 mt-2">
+          Ubicación aproximada (centro de la ciudad)
+        </p>
+      )}
+
+      {ev.ticket_url && (
+        <a
+          href={ev.ticket_url}
+          target="_blank"
+          rel="noreferrer"
+          className="mt-2 block text-center bg-violet-600 hover:bg-violet-700 text-white text-xs font-medium py-1.5 rounded-full transition-colors"
+        >
+          Comprar entrada
+        </a>
+      )}
+    </div>
+  );
+}
+
+
 export default function Map({
   events, loading, error, filter, onFilterChange,
   mode, activeIndex, onNext, onPrev,
@@ -235,31 +291,8 @@ export default function Map({
             position={[ev.lat, ev.lng]}
             icon={makeIcon(ev.venue_precision, isChatMode && idx === activeIndex)}
           >
-            <Popup>
-              <div className="text-sm">
-                <p className="font-semibold">{ev.name}</p>
-                <p className="text-slate-600">{ev.venue_name}</p>
-                <p className="text-slate-500">
-                  {new Date(ev.date_from).toLocaleDateString("es-AR", {
-                    day: "2-digit", month: "2-digit", year: "numeric",
-                  })}
-                </p>
-                {ev.venue_precision === "city" && (
-                  <p className="text-xs text-amber-600 mt-1">
-                    Ubicacion aproximada (centro de la ciudad)
-                  </p>
-                )}
-                {ev.ticket_url && (
-                  <a
-                    href={ev.ticket_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-violet-600 underline text-xs break-all"
-                  >
-                    Comprar entrada
-                  </a>
-                )}
-              </div>
+            <Popup maxWidth={260}>
+              <PopupContent ev={ev} />
             </Popup>
           </Marker>
         ))}
