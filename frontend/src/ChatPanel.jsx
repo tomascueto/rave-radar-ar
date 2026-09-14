@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 
-export default function ChatPanel({ onEventsUpdate }) {
+const API_BASE = "http://localhost:8000";
+
+export default function ChatPanel({ onEventsUpdate, accessToken }) {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -25,16 +27,16 @@ export default function ChatPanel({ onEventsUpdate }) {
     setSending(true);
 
     try {
-      const res = await fetch("http://localhost:8000/api/chat", {
+      const headers = { "Content-Type": "application/json" };
+      if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+
+      const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({ query }),
       });
       const data = await res.json();
 
-      // Cada respuesta del asistente guarda sus PROPIOS eventos -- asi el
-      // boton "Ver eventos" puede recuperar cualquier respuesta anterior
-      // (no solo la ultima) sin volver a consultar al chatbot.
       setMessages((prev) => [
         ...prev,
         { role: "assistant", text: data.response_text, events: data.events },
@@ -53,11 +55,6 @@ export default function ChatPanel({ onEventsUpdate }) {
 
   return (
     <div className="w-96 h-full flex flex-col bg-white border-r border-slate-200">
-      <div className="px-4 py-3 border-b border-slate-200">
-        <h1 className="font-semibold text-slate-800">Rave Radar AR</h1>
-        <p className="text-xs text-slate-400">Preguntame por eventos</p>
-      </div>
-
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.map((msg, i) => (
           <div

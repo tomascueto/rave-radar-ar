@@ -34,15 +34,18 @@ from sqlalchemy.orm import joinedload
 from database.connection import SessionLocal
 from database.models import Event, EventGenre
 from rag.agent import run_agent
+from auth.router import router as auth_router
 
 app = FastAPI(title="Rave Radar AR - API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ajustar a un dominio concreto antes de produccion
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+app.include_router(auth_router)
 
 # Se cargan UNA sola vez al arrancar el servidor, no en cada request del
 # chat -- cargar el modelo de embeddings por consulta agregaria varios
