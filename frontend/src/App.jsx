@@ -3,6 +3,8 @@ import Map, { getDateRange } from "./Map";
 import ChatPanel from "./ChatPanel";
 import Navbar from "./Navbar";
 import GenreSurvey from "./GenreSurvey";
+import AuthModal from "./AuthModal";
+import ResetPasswordPage from "./ResetPasswordPage";
 
 const API_BASE = "http://localhost:8000";
 
@@ -27,6 +29,7 @@ function App() {
   const [accessToken, setAccessToken] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [showSurvey, setShowSurvey] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -61,9 +64,6 @@ function App() {
       .catch(() => setCurrentUser(null));
   }, [accessToken]);
 
-  // Encuesta de onboarding: se dispara sola apenas confirmamos que el
-  // usuario logueado todavia no tiene NINGUN genero guardado -- lista
-  // vacia se interpreta como "todavia no la completo".
   useEffect(() => {
     if (!accessToken || !currentUser) return;
     fetch(`${API_BASE}/api/users/me/genres`, {
@@ -76,8 +76,9 @@ function App() {
       .catch(() => {});
   }, [accessToken, currentUser]);
 
-  function handleLogin() {
-    window.location.href = `${API_BASE}/api/auth/google/login`;
+  function handleAuthSuccess(token) {
+    setAccessToken(token);
+    setShowAuthModal(false);
   }
 
   function handleLogout() {
@@ -122,9 +123,22 @@ function App() {
     setActiveIndex((i) => Math.max(i - 1, 0));
   }
 
+  // Pagina dedicada para el link de recuperacion de contrasena que llega
+  // por mail -- se chequea despues de declarar todos los hooks (para no
+  // violar las Reglas de los Hooks), asi que algunos fetches de arriba
+  // corren de mas en esta ruta puntual. Aceptable: es una pagina de
+  // acceso raro, sin impacto real.
+  if (window.location.pathname === "/reset-password") {
+    return <ResetPasswordPage />;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen">
-      <Navbar currentUser={currentUser} onLogin={handleLogin} onLogout={handleLogout} />
+      <Navbar
+        currentUser={currentUser}
+        onOpenAuth={() => setShowAuthModal(true)}
+        onLogout={handleLogout}
+      />
       <div className="flex flex-1 overflow-hidden">
         <ChatPanel onEventsUpdate={handleChatEvents} accessToken={accessToken} />
         <div className="flex-1 relative">
@@ -144,6 +158,10 @@ function App() {
 
       {showSurvey && (
         <GenreSurvey accessToken={accessToken} onDone={() => setShowSurvey(false)} />
+      )}
+
+      {showAuthModal && (
+        <AuthModal onClose={() => setShowAuthModal(false)} onLoginSuccess={handleAuthSuccess} />
       )}
     </div>
   );

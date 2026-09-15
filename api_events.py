@@ -40,7 +40,7 @@ from auth.router import router as auth_router
 from database.connection import SessionLocal
 from database.models import Event, EventGenre, User
 from rag.agent import run_agent
-from users.router import get_user_genre_ids, router as users_router
+from users.router import get_user_genre_weights, router as users_router
 
 app = FastAPI(title="Rave Radar AR - API")
 
@@ -164,11 +164,11 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
     """
     db = SessionLocal()
     try:
-        user_genre_ids = get_user_genre_ids(db, user.id) if user else None
+        user_genre_weights = get_user_genre_weights(db, user.id) if user else None
 
         final_state = run_agent(
             db, _embedding_model, _qdrant_client, request.query,
-            user_genre_ids=user_genre_ids,
+            user_genre_weights=user_genre_weights,
         )
         events = final_state["events"]
         response_text = final_state["response_text"]

@@ -1,4 +1,4 @@
-function AuthBar({ currentUser, onLogin, onLogout }) {
+function AuthBar({ currentUser, onOpenAuth, onLogout }) {
   if (currentUser) {
     return (
       <div className="flex items-center gap-2">
@@ -24,7 +24,7 @@ function AuthBar({ currentUser, onLogin, onLogout }) {
   }
   return (
     <button
-      onClick={onLogin}
+      onClick={onOpenAuth}
       className="text-sm font-medium text-violet-600 hover:text-violet-700 border border-violet-200 rounded-full px-4 py-1.5 transition-colors"
     >
       Iniciar sesión
@@ -32,11 +32,11 @@ function AuthBar({ currentUser, onLogin, onLogout }) {
   );
 }
 
-export default function Navbar({ currentUser, onLogin, onLogout }) {
+export default function Navbar({ currentUser, onOpenAuth, onLogout }) {
   return (
     <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-slate-200 bg-white">
       <h1 className="font-semibold text-slate-800">Rave Radar AR</h1>
-      <AuthBar currentUser={currentUser} onLogin={onLogin} onLogout={onLogout} />
+      <AuthBar currentUser={currentUser} onOpenAuth={onOpenAuth} onLogout={onLogout} />
     </header>
   );
 }

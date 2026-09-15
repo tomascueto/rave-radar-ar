@@ -42,7 +42,7 @@ class AgentState(TypedDict):
     semantic_text: str | None
     events: list[Event]
     response_text: str
-    user_genre_ids: set[str] | None
+    user_genre_weights: dict[str, float] | None
 
 
 def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
@@ -89,21 +89,23 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
     def rerank_by_preference_node(state: AgentState) -> dict:
         """
         Si hay un usuario logueado con géneros favoritos guardados, los
-        eventos que coinciden con alguno de esos géneros se reordenan
-        primero -- sin sacar ni agregar ningún evento, solo reordenando lo
-        que ya se recuperó. Sort estable: dentro de "coincide" y "no
-        coincide", se respeta el orden relativo que ya traían (cronológico
-        en la rama SQL, por relevancia semántica en la rama Qdrant).
+        eventos se reordenan por un score de afinidad: la SUMA de los
+        pesos (weight) de cada género preferido que el evento tiene, no
+        solo si coincide o no. Un evento que coincide con dos géneros
+        favoritos (aunque cada uno pese poco individualmente) puede
+        superar a uno que coincide con uno solo — más matizado que el
+        particionamiento binario anterior. Sort estable: eventos con el
+        mismo score conservan el orden relativo previo (cronológico en la
+        rama SQL, por relevancia semántica en la rama Qdrant).
         """
-        preferred = state.get("user_genre_ids")
-        if not preferred:
+        weights = state.get("user_genre_weights")
+        if not weights:
             return {}
 
-        def matches_preference(ev: Event) -> bool:
-            event_genre_ids = {str(eg.genre_id) for eg in ev.genres}
-            return not event_genre_ids.isdisjoint(preferred)
+        def affinity_score(ev: Event) -> float:
+            return sum(weights.get(str(eg.genre_id), 0) for eg in ev.genres)
 
-        reranked = sorted(state["events"], key=lambda ev: not matches_preference(ev))
+        reranked = sorted(state["events"], key=lambda ev: -affinity_score(ev))
         return {"events": reranked}
 
     def generate_node(state: AgentState) -> dict:
@@ -148,8 +150,8 @@ def run_agent(
     model: SentenceTransformer,
     client: QdrantClient,
     query: str,
-    user_genre_ids: set[str] | None = None,
+    user_genre_weights: dict[str, float] | None = None,
 ) -> AgentState:
     """Punto de entrada de conveniencia: construye, ejecuta y devuelve el estado final."""
     agent = build_agent(db, model, client)
-    return agent.invoke({"query": query, "user_genre_ids": user_genre_ids})
+    return agent.invoke({"query": query, "user_genre_weights": user_genre_weights})

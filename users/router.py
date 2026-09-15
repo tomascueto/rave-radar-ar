@@ -19,10 +19,18 @@ router = APIRouter(prefix="/api/users", tags=["users"])
 
 
 def get_user_genre_ids(db: Session, user_id) -> set[str]:
-    """Reutilizado tanto por /me/genres como por /api/chat (para
-    personalizar el orden de resultados de un usuario logueado)."""
+    """Reutilizado por /me/genres, para saber que ya selecciono el
+    usuario (la encuesta lo necesita como set simple, sin pesos)."""
     prefs = db.query(UserGenrePreference).filter(UserGenrePreference.user_id == user_id).all()
     return {str(p.genre_id) for p in prefs}
+
+
+def get_user_genre_weights(db: Session, user_id) -> dict[str, float]:
+    """Reutilizado por /api/chat, para el reordenamiento graduado por
+    afinidad (Sección del agente) -- a diferencia de get_user_genre_ids,
+    expone el peso real de cada preferencia, no solo si existe."""
+    prefs = db.query(UserGenrePreference).filter(UserGenrePreference.user_id == user_id).all()
+    return {str(p.genre_id): p.weight for p in prefs}
 
 
 class GenreOut(BaseModel):

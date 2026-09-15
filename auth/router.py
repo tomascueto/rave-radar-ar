@@ -242,7 +242,9 @@ def register(body: RegisterIn):
 @router.get("/verify-email")
 def verify_email(token: str):
     """El link del mail de confirmación apunta acá. Si el token es válido
-    y no expiró, marca la cuenta como verificada y redirige al frontend."""
+    y no expiró, marca la cuenta como verificada y la deja directamente
+    logueada -- mismo mecanismo que el login con Google (access token en
+    la URL, refresh en cookie httponly), reutilizado tal cual."""
     token_hash = hash_token(token)
     db = SessionLocal()
     try:
@@ -257,6 +259,15 @@ def verify_email(token: str):
         user = db.query(User).filter(User.id == record.user_id).first()
         user.is_email_verified = True
         record.used_at = datetime.now(timezone.utc)
+
+        access_token = create_access_token(user.id)
+        raw_refresh, refresh_hash = generate_refresh_token()
+        db.add(RefreshToken(
+            user_id=user.id,
+            token_hash=refresh_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        ))
+
         db.commit()
     except HTTPException:
         raise
@@ -266,7 +277,13 @@ def verify_email(token: str):
     finally:
         db.close()
 
-    return RedirectResponse(f"{FRONTEND_URL}/?verified=true")
+    redirect = RedirectResponse(f"{FRONTEND_URL}/?access_token={access_token}")
+    redirect.set_cookie(
+        REFRESH_COOKIE, raw_refresh,
+        httponly=True, samesite="lax", secure=False,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+    )
+    return redirect
 
 
 class LoginIn(BaseModel):
