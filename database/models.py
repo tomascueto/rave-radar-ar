@@ -91,7 +91,7 @@ class Event(Base):
     max_price = Column(Numeric(10, 2))
     city_id = Column(UUID(as_uuid=True), ForeignKey("cities.id"), nullable=True)
     currency = Column(String(10), default="ARS")
-    ticket_url = Column(String(500))
+    ticket_url = Column(Text)
     flyer_url = Column(String(500))
     event_type = Column(Enum(EventTypeEnum))
     is_active = Column(Boolean, default=True)
@@ -169,6 +169,7 @@ class User(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email = Column(String(300), unique=True, nullable=False)
+    password_hash = Column(String(255), nullable=True)  # None para usuarios que solo usan Google
     display_name = Column(String(200))
     avatar_url = Column(String(500))
     is_email_verified = Column(Boolean, default=False)
@@ -228,6 +229,17 @@ class EmailVerificationToken(Base):
 
     user = relationship("User", back_populates="email_verification_tokens")
 
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    token_hash = Column(String(500), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    user = relationship("User")
 
 class UserGenrePreference(Base):
     __tablename__ = "user_genre_preferences"

@@ -44,18 +44,30 @@ def decode_access_token(token: str) -> str:
     return payload["sub"]
 
 
-def generate_refresh_token() -> tuple[str, str]:
-    """Genera un refresh token de alta entropia. Devuelve (token_crudo,
-    hash_para_guardar) -- el crudo se manda al cliente UNA vez (en la
-    cookie), el hash es lo unico que se persiste en la base. Al ser un
-    valor aleatorio de ~384 bits (no una contrasena elegida por un
+def generate_random_token() -> tuple[str, str]:
+    """Genera un valor aleatorio de alta entropia. Devuelve (token_crudo,
+    hash_para_guardar) -- el crudo se manda al usuario UNA vez (cookie,
+    mail, etc.), el hash es lo unico que se persiste en la base. Al ser
+    un valor aleatorio de ~384 bits (no una contrasena elegida por un
     humano), alcanza con un hash rapido (SHA-256) -- el hash lento tipo
     bcrypt esta pensado para proteger contra fuerza bruta sobre valores de
-    baja entropia, que no es el caso aca."""
+    baja entropia, que no es el caso aca. Reutilizado por el refresh
+    token, el token de verificacion de email y el de recuperacion de
+    contraseña -- los tres son el mismo tipo de valor."""
     raw = secrets.token_urlsafe(48)
     token_hash = hashlib.sha256(raw.encode()).hexdigest()
     return raw, token_hash
 
 
-def hash_refresh_token(raw: str) -> str:
+def generate_refresh_token() -> tuple[str, str]:
+    """Alias por compatibilidad con el codigo existente del login de Google."""
+    return generate_random_token()
+
+
+def hash_token(raw: str) -> str:
     return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def hash_refresh_token(raw: str) -> str:
+    """Alias por compatibilidad con el codigo existente del login de Google."""
+    return hash_token(raw)

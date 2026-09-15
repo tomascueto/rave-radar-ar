@@ -6,24 +6,31 @@ los JWT propios emitidos aca.
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import SQLAlchemyError
 
 from auth.dependencies import get_current_user
+from auth.email_utils import send_email
 from auth.google_oauth import build_login_url, exchange_code_for_profile, generate_state
 from auth.jwt_utils import (
     create_access_token, generate_refresh_token, hash_refresh_token,
-    REFRESH_TOKEN_EXPIRE_DAYS,
+    generate_random_token, hash_token, REFRESH_TOKEN_EXPIRE_DAYS,
 )
+from auth.password_utils import hash_password, verify_password
 from database.connection import SessionLocal
-from database.models import AuthProviderEnum, OAuthAccount, RefreshToken, User
+from database.models import (
+    AuthProviderEnum, EmailVerificationToken, OAuthAccount, RefreshToken, User,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 FRONTEND_URL = "http://localhost:5173"
+BACKEND_URL = "http://localhost:8000"
 
 STATE_COOKIE = "oauth_state"
 REFRESH_COOKIE = "refresh_token"
+EMAIL_VERIFICATION_EXPIRE_HOURS = 24
 
 
 @router.get("/google/login")
@@ -165,3 +172,153 @@ def get_me(user: User = Depends(get_current_user)):
         "display_name": user.display_name,
         "avatar_url": user.avatar_url,
     }
+
+
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str
+    display_name: str | None = None
+
+
+@router.post("/register", status_code=201)
+def register(body: RegisterIn):
+    """
+    Crea una cuenta con email y contraseña. La cuenta queda creada pero
+    SIN poder loguearse todavía -- is_email_verified arranca en False, y
+    /login rechaza cualquier intento hasta que se confirme el mail. Si ya
+    existe una cuenta con ese email (por cualquier método, Google
+    incluido), se rechaza con 409 en vez de crear un duplicado.
+    """
+    if len(body.password) < 8:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+
+    db = SessionLocal()
+    try:
+        existing = db.query(User).filter(User.email == body.email).first()
+        if existing is not None:
+            raise HTTPException(status_code=409, detail="Ya existe una cuenta con ese email")
+
+        user = User(
+            email=body.email,
+            password_hash=hash_password(body.password),
+            display_name=body.display_name,
+            is_email_verified=False,
+        )
+        db.add(user)
+        db.flush()
+
+        raw_token, token_hash = generate_random_token()
+        db.add(EmailVerificationToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=EMAIL_VERIFICATION_EXPIRE_HOURS),
+        ))
+        db.commit()
+
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudo crear la cuenta")
+    finally:
+        db.close()
+
+    verify_url = f"{BACKEND_URL}/api/auth/verify-email?token={raw_token}"
+    send_email(
+        to_email=body.email,
+        subject="Confirmá tu cuenta en Rave Radar AR",
+        html_content=(
+            f"<p>¡Gracias por registrarte en Rave Radar AR!</p>"
+            f"<p><a href='{verify_url}'>Hacé click acá para confirmar tu cuenta</a></p>"
+            f"<p>Si no fuiste vos, podés ignorar este mail.</p>"
+        ),
+    )
+
+    return {"message": "Cuenta creada. Revisá tu email (y la carpeta de spam) para confirmarla."}
+
+
+@router.get("/verify-email")
+def verify_email(token: str):
+    """El link del mail de confirmación apunta acá. Si el token es válido
+    y no expiró, marca la cuenta como verificada y redirige al frontend."""
+    token_hash = hash_token(token)
+    db = SessionLocal()
+    try:
+        record = (
+            db.query(EmailVerificationToken)
+            .filter(EmailVerificationToken.token_hash == token_hash, EmailVerificationToken.used_at.is_(None))
+            .first()
+        )
+        if record is None or record.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="El link de verificación es inválido o expiró")
+
+        user = db.query(User).filter(User.id == record.user_id).first()
+        user.is_email_verified = True
+        record.used_at = datetime.now(timezone.utc)
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudo verificar la cuenta")
+    finally:
+        db.close()
+
+    return RedirectResponse(f"{FRONTEND_URL}/?verified=true")
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+@router.post("/login")
+def login(body: LoginIn):
+    """
+    Login por email y contraseña. Emite el mismo tipo de sesión que el
+    login con Google (access token + refresh cookie httponly) -- /refresh
+    y /logout ya construidos para Google funcionan igual acá, sin ningún
+    cambio, porque ambos caminos terminan en la misma tabla RefreshToken.
+    """
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == body.email).first()
+
+        # Mismo mensaje genérico sin importar CUÁL de estas tres cosas
+        # falló (el email no existe, la cuenta es solo-Google sin
+        # contraseña, o la contraseña no coincide) -- evita que la
+        # respuesta permita deducir qué emails están registrados.
+        credenciales_invalidas = HTTPException(
+            status_code=401, detail="Email o contraseña incorrectos"
+        )
+        if user is None or user.password_hash is None:
+            raise credenciales_invalidas
+        if not verify_password(body.password, user.password_hash):
+            raise credenciales_invalidas
+
+        if not user.is_email_verified:
+            raise HTTPException(status_code=403, detail="Confirmá tu email antes de iniciar sesión")
+
+        access_token = create_access_token(user.id)
+        raw_refresh, refresh_hash = generate_refresh_token()
+        db.add(RefreshToken(
+            user_id=user.id,
+            token_hash=refresh_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        ))
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudo iniciar sesión")
+    finally:
+        db.close()
+
+    response = JSONResponse({"access_token": access_token})
+    response.set_cookie(
+        REFRESH_COOKIE, raw_refresh,
+        httponly=True, samesite="lax", secure=False,
+        max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
+    )
+    return response
