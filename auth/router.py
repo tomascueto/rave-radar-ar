@@ -20,7 +20,8 @@ from auth.jwt_utils import (
 from auth.password_utils import hash_password, verify_password
 from database.connection import SessionLocal
 from database.models import (
-    AuthProviderEnum, EmailVerificationToken, OAuthAccount, RefreshToken, User,
+    AuthProviderEnum, EmailVerificationToken, OAuthAccount, PasswordResetToken,
+    RefreshToken, User,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -31,6 +32,7 @@ BACKEND_URL = "http://localhost:8000"
 STATE_COOKIE = "oauth_state"
 REFRESH_COOKIE = "refresh_token"
 EMAIL_VERIFICATION_EXPIRE_HOURS = 24
+PASSWORD_RESET_EXPIRE_HOURS = 2
 
 
 @router.get("/google/login")
@@ -322,3 +324,115 @@ def login(body: LoginIn):
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
     return response
+
+
+class ForgotPasswordIn(BaseModel):
+    email: EmailStr
+
+
+@router.post("/forgot-password")
+def forgot_password(body: ForgotPasswordIn):
+    """
+    Siempre devuelve la misma respuesta, exista o no una cuenta con ese
+    email -- evita que la respuesta del API permita confirmar qué emails
+    están registrados. El mail solo se envía si la cuenta existe de
+    verdad, y su contenido depende de si esa cuenta tiene contraseña
+    propia o es exclusivamente de Google (caso en el que no tiene sentido
+    ofrecer un reset, así que se le avisa en cambio cómo entrar).
+    """
+    generic_response = {
+        "message": "Si existe una cuenta con ese email, te enviamos instrucciones."
+    }
+
+    db = SessionLocal()
+    try:
+        user = db.query(User).filter(User.email == body.email).first()
+        if user is None:
+            return generic_response
+
+        if user.password_hash is None:
+            send_email(
+                to_email=user.email,
+                subject="Tu cuenta en Rave Radar AR usa Google",
+                html_content=(
+                    "<p>Pediste recuperar tu contraseña, pero tu cuenta no tiene una propia — "
+                    "iniciaste sesión con Google. Entrá con el botón 'Continuar con Google' "
+                    "en su lugar.</p>"
+                ),
+            )
+            return generic_response
+
+        raw_token, token_hash = generate_random_token()
+        db.add(PasswordResetToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=datetime.now(timezone.utc) + timedelta(hours=PASSWORD_RESET_EXPIRE_HOURS),
+        ))
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudo procesar el pedido")
+    finally:
+        db.close()
+
+    reset_url = f"{FRONTEND_URL}/reset-password?token={raw_token}"
+    send_email(
+        to_email=body.email,
+        subject="Recuperá tu contraseña en Rave Radar AR",
+        html_content=(
+            f"<p>Pediste recuperar tu contraseña.</p>"
+            f"<p><a href='{reset_url}'>Hacé click acá para elegir una nueva</a></p>"
+            f"<p>Este link expira en {PASSWORD_RESET_EXPIRE_HOURS} horas. "
+            f"Si no fuiste vos, podés ignorar este mail.</p>"
+        ),
+    )
+
+    return generic_response
+
+
+class ResetPasswordIn(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/reset-password")
+def reset_password(body: ResetPasswordIn):
+    """
+    Valida el token de recuperación y establece la nueva contraseña. Al
+    resetear, se revocan TODAS las sesiones activas (refresh tokens) del
+    usuario -- un reset suele responder a una sospecha de cuenta
+    comprometida, así que no tendría sentido dejar vivas sesiones
+    iniciadas antes del reset.
+    """
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+
+    token_hash = hash_token(body.token)
+    db = SessionLocal()
+    try:
+        record = (
+            db.query(PasswordResetToken)
+            .filter(PasswordResetToken.token_hash == token_hash, PasswordResetToken.used_at.is_(None))
+            .first()
+        )
+        if record is None or record.expires_at < datetime.now(timezone.utc):
+            raise HTTPException(status_code=400, detail="El link de recuperación es inválido o expiró")
+
+        user = db.query(User).filter(User.id == record.user_id).first()
+        user.password_hash = hash_password(body.new_password)
+        record.used_at = datetime.now(timezone.utc)
+
+        db.query(RefreshToken).filter(RefreshToken.user_id == user.id).update(
+            {"is_revoked": True}
+        )
+
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudo restablecer la contraseña")
+    finally:
+        db.close()
+
+    return {"message": "Contraseña actualizada. Ya podés iniciar sesión."}
