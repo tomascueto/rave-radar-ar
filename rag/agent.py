@@ -3,22 +3,19 @@ Agente formal del pipeline de recuperación semántica, implementado como un
 grafo de estado con LangGraph, conforme al diseño presentado en el
 Capítulo 3.
 
-Hasta este punto del desarrollo, las mismas cuatro etapas (segmentar,
-rutear, ejecutar, generar) se invocaban como una secuencia de llamadas a
-función directas desde el endpoint /api/chat. Este módulo no cambia esa
-lógica — cada nodo reutiliza exactamente las mismas funciones ya
-validadas de forma aislada en router.py, query_executor.py y
-response_generator.py, sin duplicarlas — sino que la expone como un grafo
-explícito, donde la decisión entre SQL directo, búsqueda híbrida en
-Qdrant, o corte por restricción geográfica no resuelta (Sección 4.10.2)
-es una arista condicional de primera clase, no un valor de retorno opaco
-dentro de una función.
+Cada nodo reutiliza exactamente las mismas funciones ya validadas de forma
+aislada en router.py, query_executor.py y response_generator.py, sin
+duplicarlas — la expone como un grafo explícito, donde la decisión entre
+SQL directo, búsqueda híbrida en Qdrant, o corte por restricción
+geográfica no resuelta es una arista condicional de primera clase, no un
+valor de retorno opaco dentro de una función.
 
-Limitación conocida: el grafo, al igual que el pipeline que reemplaza, es
-STATELESS entre turnos de una misma conversación — cada consulta se
-procesa sin ningún conocimiento de mensajes anteriores. Incorporar
-memoria de conversación queda como trabajo pendiente, facilitado -- no
-resuelto -- por esta formalización.
+Grafo: segment -> route -> (sql | qdrant | empty) -> filter_mappable ->
+rerank_by_preference -> generate
+
+Limitación conocida: el grafo es STATELESS entre turnos de una misma
+conversación — cada consulta se procesa sin ningún conocimiento de
+mensajes anteriores.
 """
 
 from __future__ import annotations
@@ -45,6 +42,7 @@ class AgentState(TypedDict):
     semantic_text: str | None
     events: list[Event]
     response_text: str
+    user_genre_ids: set[str] | None
 
 
 def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
@@ -59,9 +57,6 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
         return {"segmented": segment_query(state["query"])}
 
     def route_node(state: AgentState) -> dict:
-        # Reutiliza route_from_segments tal cual -- ya probado de forma
-        # aislada (resolución de entidades, fecha/precio determinísticos,
-        # location_expr) -- en vez de duplicar esa lógica en el nodo.
         result = route_from_segments(db, state["segmented"])
         return {
             "filters": result.filters,
@@ -79,6 +74,38 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
     def execute_empty_node(state: AgentState) -> dict:
         return {"events": []}
 
+    def filter_mappable_node(state: AgentState) -> dict:
+        """
+        Solo se conservan eventos con venue asignado y coordenadas resueltas
+        -- un evento que no se puede ubicar en el mapa no es una
+        recomendación completa para esta aplicación.
+        """
+        mappable = [
+            ev for ev in state["events"]
+            if ev.venue is not None and ev.venue.coordinates is not None
+        ]
+        return {"events": mappable}
+
+    def rerank_by_preference_node(state: AgentState) -> dict:
+        """
+        Si hay un usuario logueado con géneros favoritos guardados, los
+        eventos que coinciden con alguno de esos géneros se reordenan
+        primero -- sin sacar ni agregar ningún evento, solo reordenando lo
+        que ya se recuperó. Sort estable: dentro de "coincide" y "no
+        coincide", se respeta el orden relativo que ya traían (cronológico
+        en la rama SQL, por relevancia semántica en la rama Qdrant).
+        """
+        preferred = state.get("user_genre_ids")
+        if not preferred:
+            return {}
+
+        def matches_preference(ev: Event) -> bool:
+            event_genre_ids = {str(eg.genre_id) for eg in ev.genres}
+            return not event_genre_ids.isdisjoint(preferred)
+
+        reranked = sorted(state["events"], key=lambda ev: not matches_preference(ev))
+        return {"events": reranked}
+
     def generate_node(state: AgentState) -> dict:
         response_text = generate_response(
             state["query"], state["events"],
@@ -95,6 +122,8 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
     graph.add_node("execute_sql", execute_sql_node)
     graph.add_node("execute_qdrant", execute_qdrant_node)
     graph.add_node("execute_empty", execute_empty_node)
+    graph.add_node("filter_mappable", filter_mappable_node)
+    graph.add_node("rerank_by_preference", rerank_by_preference_node)
     graph.add_node("generate", generate_node)
 
     graph.set_entry_point("segment")
@@ -104,15 +133,23 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
         "qdrant": "execute_qdrant",
         "empty": "execute_empty",
     })
-    graph.add_edge("execute_sql", "generate")
-    graph.add_edge("execute_qdrant", "generate")
-    graph.add_edge("execute_empty", "generate")
+    graph.add_edge("execute_sql", "filter_mappable")
+    graph.add_edge("execute_qdrant", "filter_mappable")
+    graph.add_edge("execute_empty", "filter_mappable")
+    graph.add_edge("filter_mappable", "rerank_by_preference")
+    graph.add_edge("rerank_by_preference", "generate")
     graph.add_edge("generate", END)
 
     return graph.compile()
 
 
-def run_agent(db: Session, model: SentenceTransformer, client: QdrantClient, query: str) -> AgentState:
+def run_agent(
+    db: Session,
+    model: SentenceTransformer,
+    client: QdrantClient,
+    query: str,
+    user_genre_ids: set[str] | None = None,
+) -> AgentState:
     """Punto de entrada de conveniencia: construye, ejecuta y devuelve el estado final."""
     agent = build_agent(db, model, client)
-    return agent.invoke({"query": query})
+    return agent.invoke({"query": query, "user_genre_ids": user_genre_ids})

@@ -1,16 +1,20 @@
 """
-API de Rave Radar AR: mapa interactivo + chat.
+API de Rave Radar AR: mapa interactivo + chat + auth + preferencias.
 
-Dos endpoints:
+Endpoints propios de este archivo:
   GET  /api/events/map  -> eventos con coordenadas para pintar en el mapa,
                             con filtro de fecha opcional (estructural, sin LLM)
   POST /api/chat         -> ejecuta el agente formal (rag/agent.py, grafo de
                             LangGraph) que encadena segmentacion, resolucion
                             de entidades, ejecucion de la busqueda (SQL o
-                            Qdrant) y generacion de la respuesta. Devuelve el
-                            texto Y los eventos recomendados (en el mismo
-                            formato que el mapa), para que el frontend pueda
-                            actualizar los pines con lo que el chat recomendo.
+                            Qdrant), filtrado por eventos ubicables, y
+                            reordenamiento por preferencia de genero si hay
+                            un usuario logueado con generos guardados, antes
+                            de generar la respuesta. Devuelve el texto Y los
+                            eventos recomendados (mismo formato que el mapa).
+
+Los endpoints de /api/auth/* y /api/users/* viven en auth/router.py y
+users/router.py respectivamente, incluidos mas abajo.
 
 Nota sobre serializacion: UUID -> string, datetime -> ISO 8601,
 Geometry(PostGIS) -> (lat, lng).
@@ -23,7 +27,7 @@ Uso:
 
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from geoalchemy2.shape import to_shape
 from pydantic import BaseModel
@@ -31,10 +35,12 @@ from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import joinedload
 
-from database.connection import SessionLocal
-from database.models import Event, EventGenre
-from rag.agent import run_agent
+from auth.dependencies import get_current_user_optional
 from auth.router import router as auth_router
+from database.connection import SessionLocal
+from database.models import Event, EventGenre, User
+from rag.agent import run_agent
+from users.router import get_user_genre_ids, router as users_router
 
 app = FastAPI(title="Rave Radar AR - API")
 
@@ -42,10 +48,11 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173"],
     allow_credentials=True,
-    allow_methods=["GET", "POST"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 app.include_router(auth_router)
+app.include_router(users_router)
 
 # Se cargan UNA sola vez al arrancar el servidor, no en cada request del
 # chat -- cargar el modelo de embeddings por consulta agregaria varios
@@ -145,16 +152,24 @@ def get_map_events(date_from: datetime | None = None, date_to: datetime | None =
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+def chat(request: ChatRequest, user: User | None = Depends(get_current_user_optional)):
     """
-    Ejecuta el agente formal de LangGraph (rag/agent.py): segmentar -> rutear
-    -> ejecutar (arista condicional: SQL / Qdrant / vacio) -> generar. Si
-    algo falla (por ejemplo, cuota de Gemini agotada), devuelve un mensaje
-    de error legible en vez de un 500 crudo.
+    Ejecuta el agente formal de LangGraph (rag/agent.py): segmentar ->
+    rutear -> ejecutar (arista condicional: SQL / Qdrant / vacio) ->
+    filtrar por mapeable -> reordenar por preferencia de genero (si hay
+    usuario logueado con generos guardados) -> generar. La sesion es
+    OPCIONAL: sin token, o con un token invalido/vencido, el chat sigue
+    funcionando igual, simplemente sin ese reordenamiento. Si algo falla,
+    devuelve un mensaje de error legible en vez de un 500 crudo.
     """
     db = SessionLocal()
     try:
-        final_state = run_agent(db, _embedding_model, _qdrant_client, request.query)
+        user_genre_ids = get_user_genre_ids(db, user.id) if user else None
+
+        final_state = run_agent(
+            db, _embedding_model, _qdrant_client, request.query,
+            user_genre_ids=user_genre_ids,
+        )
         events = final_state["events"]
         response_text = final_state["response_text"]
 
@@ -164,8 +179,9 @@ def chat(request: ChatRequest):
             if me is not None:
                 map_events.append(me)
 
-        print(f"[/api/chat] query: {request.query!r} | estrategia: {final_state['strategy']} | "
-              f"eventos: {len(events)} | con coordenadas: {len(map_events)}")
+        print(f"[/api/chat] query: {request.query!r} | usuario: {user.email if user else 'anonimo'} | "
+              f"estrategia: {final_state['strategy']} | eventos: {len(events)} | "
+              f"con coordenadas: {len(map_events)}")
 
         return ChatResponse(response_text=response_text, events=map_events)
 

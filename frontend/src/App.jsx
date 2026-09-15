@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Map, { getDateRange } from "./Map";
 import ChatPanel from "./ChatPanel";
 import Navbar from "./Navbar";
+import GenreSurvey from "./GenreSurvey";
 
 const API_BASE = "http://localhost:8000";
 
@@ -25,6 +26,7 @@ function App() {
 
   const [accessToken, setAccessToken] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [showSurvey, setShowSurvey] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -58,6 +60,21 @@ function App() {
       .then(setCurrentUser)
       .catch(() => setCurrentUser(null));
   }, [accessToken]);
+
+  // Encuesta de onboarding: se dispara sola apenas confirmamos que el
+  // usuario logueado todavia no tiene NINGUN genero guardado -- lista
+  // vacia se interpreta como "todavia no la completo".
+  useEffect(() => {
+    if (!accessToken || !currentUser) return;
+    fetch(`${API_BASE}/api/users/me/genres`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((genreIds) => {
+        if (genreIds.length === 0) setShowSurvey(true);
+      })
+      .catch(() => {});
+  }, [accessToken, currentUser]);
 
   function handleLogin() {
     window.location.href = `${API_BASE}/api/auth/google/login`;
@@ -124,6 +141,10 @@ function App() {
           />
         </div>
       </div>
+
+      {showSurvey && (
+        <GenreSurvey accessToken={accessToken} onDone={() => setShowSurvey(false)} />
+      )}
     </div>
   );
 }
