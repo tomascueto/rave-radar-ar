@@ -1,7 +1,7 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import { useEffect, useRef } from "react";
+import { useEffect} from "react";
 
 const DEFAULT_CENTER = [-34.6037, -58.3816];
 const DEFAULT_ZOOM = 12;
@@ -141,22 +141,25 @@ function FilterBar({ active, onChange }) {
 
 function MapController({ activeEvent, userLocation }) {
   const map = useMap();
-  const hasFlownToUser = useRef(false);
 
   useEffect(() => {
     if (activeEvent) {
+      map.closePopup();
       map.flyTo([activeEvent.lat, activeEvent.lng], 15, { duration: 0.8 });
     }
   }, [activeEvent, map]);
 
   useEffect(() => {
-    // Solo vuela a la ubicacion del usuario UNA vez, y solo si no hay
-    // un evento del chat ya centrado -- evita que una geolocalizacion
-    // que resuelve tarde le saque el foco a algo que el usuario ya
-    // esta mirando.
-    if (userLocation && !hasFlownToUser.current && !activeEvent) {
+    // Vuela a la ubicacion del usuario cada vez que cambia -- al cargar
+    // la app, y tambien cada vez que se pide de nuevo con el boton de
+    // "centrar en mi ubicacion". Solo si no hay un evento del chat ya
+    // centrado, para no sacarle el foco a algo que el usuario esta
+    // mirando. Cierra cualquier popup abierto antes de volar -- un
+    // popup abierto puede interferir con el movimiento programatico del
+    // mapa en Leaflet.
+    if (userLocation && !activeEvent) {
+      map.closePopup();
       map.flyTo([userLocation.lat, userLocation.lng], 13, { duration: 1 });
-      hasFlownToUser.current = true;
     }
   }, [userLocation, activeEvent, map]);
 
@@ -306,7 +309,7 @@ function PopupContent({ ev }) {
 
 export default function Map({
   events, loading, error, filter, onFilterChange,
-  mode, activeIndex, onNext, onPrev,userLocation,
+  mode, activeIndex, onNext, onPrev,userLocation, onLocateMe
 }) {
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
 
@@ -316,6 +319,13 @@ export default function Map({
   return (
     <div className="relative h-full w-full">
       <FilterBar active={filter} onChange={onFilterChange} />
+      <button
+        onClick={onLocateMe}
+        title="Centrar en mi ubicación"
+        className="absolute bottom-6 right-4 z-[1000] w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center text-lg hover:bg-slate-50 transition-colors"
+      >
+        📍
+      </button>
 
       {isChatMode && (
         <EventCarousel events={events} activeIndex={activeIndex} onNext={onNext} onPrev={onPrev} />
