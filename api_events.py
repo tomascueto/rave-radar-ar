@@ -79,6 +79,8 @@ class MapEvent(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str
+    user_lat: float | None = None
+    user_lng: float | None = None
 
 
 class ChatResponse(BaseModel):
@@ -169,6 +171,7 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
         final_state = run_agent(
             db, _embedding_model, _qdrant_client, request.query,
             user_genre_weights=user_genre_weights,
+            user_lat=request.user_lat, user_lng=request.user_lng,
         )
         events = final_state["events"]
         response_text = final_state["response_text"]

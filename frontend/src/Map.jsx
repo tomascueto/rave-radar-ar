@@ -1,7 +1,7 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import { useEffect } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { useEffect, useRef } from "react";
 
 const DEFAULT_CENTER = [-34.6037, -58.3816];
 const DEFAULT_ZOOM = 12;
@@ -87,6 +87,38 @@ function makeIcon(precision, isActive) {
   });
 }
 
+function makeUserLocationIcon() {
+  // Punto azul con pulso animado -- mismo lenguaje visual que Google Maps
+  // o Uber para "estás acá", bien diferenciado de los pines de eventos
+  // (violeta/verde/gris). El <style> va adentro del propio HTML del
+  // icono porque L.divIcon no tiene acceso a una hoja de estilos global.
+  return L.divIcon({
+    className: "",
+    html: `
+      <style>
+        @keyframes pulse-location {
+          0% { transform: scale(1); opacity: 0.6; }
+          100% { transform: scale(2.5); opacity: 0; }
+        }
+      </style>
+      <div style="position:relative;width:20px;height:20px;">
+        <div style="
+          position:absolute;top:4px;left:4px;width:12px;height:12px;
+          background:#3B82F6;border-radius:50%;
+          animation:pulse-location 2s ease-out infinite;
+        "></div>
+        <div style="
+          position:absolute;top:4px;left:4px;width:12px;height:12px;
+          background:#3B82F6;border:2px solid white;border-radius:50%;
+          box-shadow:0 1px 4px rgba(0,0,0,0.4);
+        "></div>
+      </div>
+    `,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
+}
+
 function FilterBar({ active, onChange }) {
   return (
     <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex gap-1 bg-white/95 backdrop-blur-sm rounded-full p-1 shadow-lg">
@@ -107,13 +139,27 @@ function FilterBar({ active, onChange }) {
   );
 }
 
-function MapController({ activeEvent }) {
+function MapController({ activeEvent, userLocation }) {
   const map = useMap();
+  const hasFlownToUser = useRef(false);
+
   useEffect(() => {
     if (activeEvent) {
       map.flyTo([activeEvent.lat, activeEvent.lng], 15, { duration: 0.8 });
     }
   }, [activeEvent, map]);
+
+  useEffect(() => {
+    // Solo vuela a la ubicacion del usuario UNA vez, y solo si no hay
+    // un evento del chat ya centrado -- evita que una geolocalizacion
+    // que resuelve tarde le saque el foco a algo que el usuario ya
+    // esta mirando.
+    if (userLocation && !hasFlownToUser.current && !activeEvent) {
+      map.flyTo([userLocation.lat, userLocation.lng], 13, { duration: 1 });
+      hasFlownToUser.current = true;
+    }
+  }, [userLocation, activeEvent, map]);
+
   return null;
 }
 
@@ -260,7 +306,7 @@ function PopupContent({ ev }) {
 
 export default function Map({
   events, loading, error, filter, onFilterChange,
-  mode, activeIndex, onNext, onPrev,
+  mode, activeIndex, onNext, onPrev,userLocation,
 }) {
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
 
@@ -283,8 +329,16 @@ export default function Map({
 
       <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} className="h-full w-full">
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} maxZoom={20} />
-        <MapController activeEvent={activeEvent} />
-
+        <MapController activeEvent={activeEvent} userLocation={userLocation} />
+        {userLocation && (
+          <Marker
+            position={[userLocation.lat, userLocation.lng]}
+            icon={makeUserLocationIcon()}
+            zIndexOffset={1000}
+          >
+            <Popup>Tu ubicación</Popup>
+          </Marker>
+        )}
         {events.map((ev, idx) => (
           <Marker
             key={ev.id}

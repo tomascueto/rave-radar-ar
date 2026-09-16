@@ -30,6 +30,26 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showSurvey, setShowSurvey] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [userLocation, setUserLocation] = useState(null);
+
+  useEffect(() => {
+    // Pide la ubicacion UNA vez al arrancar. Silencioso ante rechazo,
+    // timeout, o falta de soporte -- la geolocalizacion es una mejora,
+    // nunca un requisito: sin ella, el mapa simplemente usa el centro
+    // por defecto y el chat sigue funcionando igual, solo sin poder
+    // resolver pedidos tipo "cerca mio".
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        });
+      },
+      () => {},
+      { timeout: 8000 }
+    );
+  }, []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -123,11 +143,6 @@ function App() {
     setActiveIndex((i) => Math.max(i - 1, 0));
   }
 
-  // Pagina dedicada para el link de recuperacion de contrasena que llega
-  // por mail -- se chequea despues de declarar todos los hooks (para no
-  // violar las Reglas de los Hooks), asi que algunos fetches de arriba
-  // corren de mas en esta ruta puntual. Aceptable: es una pagina de
-  // acceso raro, sin impacto real.
   if (window.location.pathname === "/reset-password") {
     return <ResetPasswordPage />;
   }
@@ -140,7 +155,11 @@ function App() {
         onLogout={handleLogout}
       />
       <div className="flex flex-1 overflow-hidden">
-        <ChatPanel onEventsUpdate={handleChatEvents} accessToken={accessToken} />
+        <ChatPanel
+          onEventsUpdate={handleChatEvents}
+          accessToken={accessToken}
+          userLocation={userLocation}
+        />
         <div className="flex-1 relative">
           <Map
             events={events}
@@ -148,6 +167,7 @@ function App() {
             error={error}
             filter={filter}
             onFilterChange={setFilter}
+            userLocation={userLocation}
             mode={mode}
             activeIndex={activeIndex}
             onNext={handleNext}

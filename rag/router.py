@@ -12,9 +12,10 @@ Pipeline completo:
 
 Principio de diseño (igual que en geocodificación y en el resolver de
 entidades): ningún componente le pide a un LLM que calcule o adivine un
-valor que tiene una respuesta objetivamente verificable. Fechas y precios
-se resuelven con lógica determinística; el LLM solo se usa para tareas de
-lenguaje que genuinamente lo requieren (segmentar texto libre).
+valor que tiene una respuesta objetivamente verificable. Fechas, precios y
+ahora distancia se resuelven con lógica determinística; el LLM solo se usa
+para tareas de lenguaje que genuinamente lo requieren (segmentar texto
+libre, distinguir un lugar nombrado de un pedido sobre la propia posición).
 """
 
 from __future__ import annotations
@@ -37,6 +38,8 @@ CHEAP_PERCENTILE_QUERY = """
     WHERE is_active = true AND max_price IS NOT NULL
 """
 
+DEFAULT_DISTANCE_KM = 10.0
+
 _ORDINALES = {
     "primer": 1, "primero": 1, "segundo": 2, "tercer": 3, "tercero": 3,
     "cuarto": 4, "quinto": 5, "ultimo": -1, "último": -1,
@@ -56,11 +59,12 @@ _ORDINAL_DATE_RE = re.compile(
     r"(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|setiembre|"
     r"octubre|noviembre|diciembre)"
 )
+_DISTANCE_KM_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*km")
 
 
 @dataclass
 class RouteResult:
-    strategy: str  # "sql" | "qdrant"
+    strategy: str  # "sql" | "qdrant" | "empty"
     filters: dict = field(default_factory=dict)
     semantic_text: str | None = None
 
@@ -178,6 +182,26 @@ def interpret_price(price_expr: str | None, wants_cheap: bool, db: Session) -> f
 
     return None
 
+
+def interpret_distance_km(location_expr: str) -> float:
+    """
+    Extrae un número de kilómetros de la expresión, si el usuario dio uno
+    explícito (ej: 'a menos de 50km' -> 50.0). Si no especificó ningún
+    número (ej: 'cerca mío', sin más), se usa un radio por defecto
+    razonable -- mismo criterio que el resto del proyecto: nunca se le
+    pide a un LLM que calcule o invente el número; si no hay dato
+    explícito en el texto, se define un valor determinístico en código,
+    no algo que el modelo "estime".
+    """
+    match = _DISTANCE_KM_RE.search(location_expr.lower())
+    if match:
+        try:
+            return float(match.group(1).replace(",", "."))
+        except ValueError:
+            pass
+    return DEFAULT_DISTANCE_KM
+
+
 def _interpret_broad_ranges(expr: str, base: datetime) -> tuple[datetime, datetime] | None:
     """Calcula rangos de tiempo amplios que dateparser suele romper."""
     expr = expr.lower()
@@ -194,17 +218,28 @@ def _interpret_broad_ranges(expr: str, base: datetime) -> tuple[datetime, dateti
         
     return None    
 
-def route_from_segments(db: Session, segmented: dict) -> RouteResult:
+def route_from_segments(
+    db: Session,
+    segmented: dict,
+    user_lat: float | None = None,
+    user_lng: float | None = None,
+) -> RouteResult:
     """
     Toma un dict ya segmentado (el resultado de segment_query, real o de
     prueba) y aplica toda la lógica de ruteo: resolución de entidades contra
-    Postgres, interpretación de fecha/precio, y decisión de estrategia.
+    Postgres, interpretación de fecha/precio/distancia, y decisión de
+    estrategia.
+
+    user_lat/user_lng son opcionales -- vienen del navegador del usuario
+    (geolocalización), nunca de geocodificar texto. Si la consulta pide
+    "cerca mío" y estas coordenadas están presentes, se resuelve con un
+    filtro de distancia real; si no están, se corta la búsqueda igual que
+    con un lugar nombrado sin geocodificar, pero avisando específicamente
+    que falta activar el permiso de ubicación.
 
     Separada de route_query() a propósito: esta función NO llama a ningún
     LLM, así que se puede testear/iterar libremente (fechas, precios,
-    decisión de ruteo) sin consumir cuota de Gemini. Útil sobre todo durante
-    desarrollo, donde el cuello de botella real suele ser la lógica
-    determinística, no la segmentación (que ya se probó y funciona).
+    distancias, decisión de ruteo) sin consumir cuota de Gemini.
     """
     resolved = resolve_candidates(db, segmented["entity_candidates"])
 
@@ -227,7 +262,6 @@ def route_from_segments(db: Session, segmented: dict) -> RouteResult:
     if date_range:
         filters["date_from_start"], filters["date_from_end"] = date_range
 
-
     max_price = interpret_price(segmented.get("price_expr"), segmented.get("wants_cheap", False), db)
     if segmented.get("price_expr") and max_price is None:
         filters.setdefault("unresolved_expressions", []).append(
@@ -236,17 +270,39 @@ def route_from_segments(db: Session, segmented: dict) -> RouteResult:
     if max_price is not None:
         filters["max_price"] = max_price
 
+    # Ubicación: dos casos bien distintos bajo el mismo location_expr.
+    # - Lugar nombrado ("cerca de General Roca"): seguimos sin poder
+    #   geocodificarlo en tiempo real (Etapa 2, pendiente) -- corta la
+    #   búsqueda, igual que antes.
+    # - Posición propia ("cerca mío"): si el navegador ya mandó
+    #   coordenadas, se resuelve de verdad con un filtro de distancia
+    #   real (PostGIS, en query_executor). Si todavía no las mandó,
+    #   corta la búsqueda con un mensaje que pide activar el permiso, en
+    #   vez de la limitación genérica de antes.
     location_expr = segmented.get("location_expr")
-    location_unresolved = bool(location_expr)
-    if location_unresolved:
-        filters.setdefault("unresolved_expressions", []).append(
-            f"ubicación: '{location_expr}'"
-        )
+    location_cuts_search = False
+
+    if location_expr:
+        is_self_location = segmented.get("is_self_location", False)
+        if is_self_location and user_lat is not None and user_lng is not None:
+            filters["user_lat"] = user_lat
+            filters["user_lng"] = user_lng
+            filters["max_distance_km"] = interpret_distance_km(location_expr)
+        elif is_self_location:
+            filters.setdefault("unresolved_expressions", []).append(
+                f"ubicación: '{location_expr}' (activá el permiso de ubicación del navegador para resolver esto)"
+            )
+            location_cuts_search = True
+        else:
+            filters.setdefault("unresolved_expressions", []).append(
+                f"ubicación: '{location_expr}'"
+            )
+            location_cuts_search = True
 
     free_text_parts = [segmented.get("free_text", "")] + resolved["unresolved"]
     semantic_text = " ".join(p for p in free_text_parts if p).strip()
 
-    if location_unresolved:
+    if location_cuts_search:
         return RouteResult(strategy="empty", filters=filters)
 
     if not semantic_text:
@@ -254,7 +310,9 @@ def route_from_segments(db: Session, segmented: dict) -> RouteResult:
     return RouteResult(strategy="qdrant", filters=filters, semantic_text=semantic_text)
 
 
-def route_query(db: Session, query: str) -> RouteResult:
+def route_query(
+    db: Session, query: str, user_lat: float | None = None, user_lng: float | None = None,
+) -> RouteResult:
     """Version 'productiva': segmenta con el LLM real y despues rutea."""
     segmented = segment_query(query)
-    return route_from_segments(db, segmented)
+    return route_from_segments(db, segmented, user_lat=user_lat, user_lng=user_lng)

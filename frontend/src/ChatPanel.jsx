@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const API_BASE = "http://localhost:8000";
 
-export default function ChatPanel({ onEventsUpdate, accessToken }) {
+export default function ChatPanel({ onEventsUpdate, accessToken, userLocation }) {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
@@ -33,7 +33,10 @@ export default function ChatPanel({ onEventsUpdate, accessToken }) {
       const res = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ query }),
+        body: JSON.stringify({
+          query,
+          ...(userLocation && { user_lat: userLocation.lat, user_lng: userLocation.lng }),
+        }),
       });
       const data = await res.json();
 

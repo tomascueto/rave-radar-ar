@@ -43,6 +43,8 @@ class AgentState(TypedDict):
     events: list[Event]
     response_text: str
     user_genre_weights: dict[str, float] | None
+    user_lat: float | None
+    user_lng: float | None
 
 
 def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
@@ -57,7 +59,10 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
         return {"segmented": segment_query(state["query"])}
 
     def route_node(state: AgentState) -> dict:
-        result = route_from_segments(db, state["segmented"])
+        result = route_from_segments(
+            db, state["segmented"],
+            user_lat=state.get("user_lat"), user_lng=state.get("user_lng"),
+        )
         return {
             "filters": result.filters,
             "strategy": result.strategy,
@@ -151,7 +156,14 @@ def run_agent(
     client: QdrantClient,
     query: str,
     user_genre_weights: dict[str, float] | None = None,
+    user_lat: float | None = None,
+    user_lng: float | None = None,
 ) -> AgentState:
     """Punto de entrada de conveniencia: construye, ejecuta y devuelve el estado final."""
     agent = build_agent(db, model, client)
-    return agent.invoke({"query": query, "user_genre_weights": user_genre_weights})
+    return agent.invoke({
+        "query": query,
+        "user_genre_weights": user_genre_weights,
+        "user_lat": user_lat,
+        "user_lng": user_lng,
+    })

@@ -7,13 +7,29 @@ correspondiente y devuelve los eventos reales.
                            luego se completan los datos desde PostgreSQL
 
 Principio de diseño: los filtros ya vienen resueltos y verificados por el
-router (entity_resolver + interpret_date/interpret_price) — este módulo
-solo traduce esos filtros al lenguaje de cada motor de consulta, sin volver
-a interpretar nada.
+router (entity_resolver + interpret_date/interpret_price/interpret_distance_km)
+— este módulo solo traduce esos filtros al lenguaje de cada motor de
+consulta, sin volver a interpretar nada.
+
+Nota sobre el filtro de distancia (user_lat/user_lng/max_distance_km): en
+la rama SQL se resuelve con PostGIS (ST_DWithin sobre geography, distancia
+real en metros sobre la superficie terrestre). En la rama Qdrant, el
+índice no tiene coordenadas en su payload -- se aplica como post-filtro en
+Python (fórmula de Haversine) sobre los eventos ya recuperados, una
+simplificación deliberada para esta primera versión: la combinación de
+búsqueda semántica + "cerca mío" es un caso más raro que el filtro
+estructurado puro, y evita tener que reindexar Qdrant. Limitación conocida
+de ese camino: como el filtro se aplica después del límite de Qdrant, es
+posible terminar con menos de `limit` resultados.
 """
 
 from __future__ import annotations
 
+import math
+
+from geoalchemy2 import Geography
+from geoalchemy2.shape import to_shape
+from sqlalchemy import cast
 from sqlalchemy.sql import func
 from sqlalchemy.orm import Session, joinedload
 from qdrant_client import QdrantClient
@@ -22,13 +38,28 @@ from qdrant_client.models import (
 )
 from sentence_transformers import SentenceTransformer
 
-from database.models import Event, EventDJ, EventGenre, DJ, Genre
+from database.models import Event, EventDJ, EventGenre, DJ, Genre, Venue
 from rag.router import RouteResult
 
 QDRANT_HOST = "localhost"
 QDRANT_PORT = 6333
 COLLECTION_NAME = "events"
 DEFAULT_LIMIT = 20
+
+
+def _distance_km(geom, lat2: float, lng2: float) -> float:
+    """Distancia en km entre una geometría PostGIS y un punto (lat, lng),
+    vía fórmula de Haversine -- suficiente para el post-filtro de la rama
+    Qdrant; el filtro real y más preciso (PostGIS ST_DWithin) se usa en
+    execute_sql."""
+    point = to_shape(geom)
+    lat1, lng1 = point.y, point.x
+    R = 6371  # radio de la Tierra en km
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lng2 - lng1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * R * math.asin(math.sqrt(a))
 
 
 # ─── Rama SQL ──────────────────────────────────────────────────────────────
@@ -57,6 +88,21 @@ def execute_sql(db: Session, filters: dict, limit: int = DEFAULT_LIMIT) -> list[
         query = query.join(EventDJ).join(DJ).filter(DJ.name.in_(filters["dj_names"]))
     if "genre_slugs" in filters:
         query = query.join(EventGenre).join(Genre).filter(Genre.slug.in_(filters["genre_slugs"]))
+
+    if "user_lat" in filters and "user_lng" in filters:
+        # Filtro de distancia real (PostGIS), no una comparación ingenua
+        # de coordenadas -- ST_DWithin sobre el tipo geography calcula
+        # distancia real sobre la superficie de la Tierra, en metros.
+        # Requiere un JOIN explícito a Venue (el joinedload de arriba
+        # sirve para cargar los datos, no para filtrar por ellos).
+        max_distance_m = filters["max_distance_km"] * 1000
+        user_point = cast(
+            func.ST_SetSRID(func.ST_MakePoint(filters["user_lng"], filters["user_lat"]), 4326),
+            Geography,
+        )
+        query = query.join(Venue).filter(
+            func.ST_DWithin(cast(Venue.coordinates, Geography), user_point, max_distance_m)
+        )
 
     # Muestreo aleatorio, no cronologico: si la cantidad de eventos que
     # matchean supera el limite, ordenar por fecha y cortar sesga
@@ -138,10 +184,28 @@ def execute_qdrant(
             joinedload(Event.djs).joinedload(EventDJ.dj),
         )
         .filter(Event.id.in_(event_ids))
+        # Postgres es la fuente de verdad para is_active, no el payload
+        # de Qdrant -- este ultimo se llena al indexar y nunca se
+        # reactualiza despues, asi que un evento puede pasar a inactivo
+        # en Postgres sin que Qdrant se entere (confirmado empiricamente:
+        # el mismo event_id mostraba is_active=False en Postgres y
+        # is_active=True en el payload de Qdrant).
+        .filter(Event.is_active == True)
         .all()
     )
     order = {eid: i for i, eid in enumerate(event_ids)}
     events.sort(key=lambda e: order.get(str(e.id), len(order)))
+
+    if "user_lat" in filters and "user_lng" in filters:
+        # Ver nota al principio del archivo: post-filtro en Python
+        # (Haversine), no PostGIS -- limitación conocida de esta rama.
+        events = [
+            ev for ev in events
+            if ev.venue and ev.venue.coordinates
+            and _distance_km(ev.venue.coordinates, filters["user_lat"], filters["user_lng"])
+            <= filters["max_distance_km"]
+        ]
+
     return events
 
 

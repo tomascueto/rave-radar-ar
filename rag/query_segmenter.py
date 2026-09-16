@@ -19,6 +19,9 @@ class QuerySegments(BaseModel):
     location_expr: str | None = Field(
         description="Expresión de proximidad o distancia geográfica si la hay, tal cual aparece en el texto (ej: 'cerca de General Roca', 'a menos de 50km de mi ubicación', 'cerca mío', 'el más cercano en distancia'). null si la consulta no pide nada de cercanía/distancia geográfica — mencionar una ciudad o zona sin pedir 'cerca' o una distancia NO cuenta como esto."
     )
+    is_self_location: bool = Field(
+        description="true SOLO si location_expr se refiere a la posición actual del propio usuario (ej: 'cerca mío', 'cerca de mi ubicación', 'el más cercano a donde estoy', 'a menos de 10km de acá'). false si location_expr se refiere a un lugar nombrado por el usuario (ej: 'cerca de General Roca', 'cerca de Palermo'), o si location_expr es null."
+    )
     free_text: str = Field(description="Descripciones de onda o estilo. Cadena vacía si no hay.")
 
 def segment_query(text: str) -> dict:
