@@ -32,12 +32,13 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
 
-  useEffect(() => {
-    // Pide la ubicacion UNA vez al arrancar. Silencioso ante rechazo,
-    // timeout, o falta de soporte -- la geolocalizacion es una mejora,
-    // nunca un requisito: sin ella, el mapa simplemente usa el centro
-    // por defecto y el chat sigue funcionando igual, solo sin poder
-    // resolver pedidos tipo "cerca mio".
+  function requestUserLocation() {
+    // Silencioso ante rechazo, timeout, o falta de soporte -- la
+    // geolocalización es una mejora, nunca un requisito: sin ella, el
+    // mapa simplemente usa el centro por defecto y el chat sigue
+    // funcionando igual, solo sin poder resolver pedidos tipo "cerca
+    // mío". Se llama tanto al arrancar la app como desde el botón de
+    // "centrar en mi ubicación".
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       (position) => {
@@ -47,8 +48,12 @@ function App() {
         });
       },
       () => {},
-      { timeout: 8000 }
+      { timeout: 8000, maximumAge: 60000 }
     );
+  }
+
+  useEffect(() => {
+    requestUserLocation();
   }, []);
 
   useEffect(() => {
@@ -172,6 +177,7 @@ function App() {
             activeIndex={activeIndex}
             onNext={handleNext}
             onPrev={handlePrev}
+            onLocateMe={requestUserLocation}
           />
         </div>
       </div>
