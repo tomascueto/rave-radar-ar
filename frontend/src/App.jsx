@@ -17,9 +17,24 @@ function buildMapApiUrl(filterKey) {
   return `${API_BASE}/api/events/map${query ? `?${query}` : ""}`;
 }
 
+function LandingPage({ onEnter }) {
+  return (
+    <div className="fixed inset-0 z-[3000] bg-white flex flex-col items-center justify-center gap-6">
+      <h1 className="text-4xl font-bold text-slate-900">Bienvenido a Rave Radar AR</h1>
+      <button
+        onClick={onEnter}
+        className="bg-violet-600 hover:bg-violet-700 text-white text-lg font-medium px-8 py-3 rounded-full transition-colors"
+      >
+        Encontrá tu fiesta
+      </button>
+    </div>
+  );
+}
+
 function App() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [hasEntered, setHasEntered] = useState(false);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("todos");
 
@@ -30,6 +45,7 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showSurvey, setShowSurvey] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
 
   function requestUserLocation() {
@@ -116,10 +132,12 @@ function App() {
     });
   }
 
-  useEffect(() => {
+  function fetchMapEvents() {
     setMode("browse");
     setLoading(true);
-    fetch(buildMapApiUrl(filter))
+    const headers = {};
+    if (accessToken) headers["Authorization"] = `Bearer ${accessToken}`;
+    fetch(buildMapApiUrl(filter), { headers })
       .then((res) => {
         if (!res.ok) throw new Error(`API respondio ${res.status}`);
         return res.json();
@@ -132,7 +150,11 @@ function App() {
         setError(err.message);
         setLoading(false);
       });
-  }, [filter]);
+  }
+
+  useEffect(() => {
+    fetchMapEvents();
+  }, [filter, accessToken]);
 
   function handleChatEvents(newEvents) {
     setEvents(newEvents);
@@ -152,38 +174,51 @@ function App() {
     return <ResetPasswordPage />;
   }
 
+  if (!hasEntered) {
+    return <LandingPage onEnter={() => setHasEntered(true)} />;
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen">
       <Navbar
         currentUser={currentUser}
         onOpenAuth={() => setShowAuthModal(true)}
+        onOpenPreferences={() => setShowSurvey(true)}
         onLogout={handleLogout}
       />
-      <div className="flex flex-1 overflow-hidden">
-        <ChatPanel
-          onEventsUpdate={handleChatEvents}
-          accessToken={accessToken}
+      <div className="flex-1 relative overflow-hidden">
+        <Map
+          events={events}
+          loading={loading}
+          error={error}
+          filter={filter}
+          onFilterChange={setFilter}
           userLocation={userLocation}
+          onLocateMe={requestUserLocation}
+          isPersonalized={!!currentUser}
+          mode={mode}
+          activeIndex={activeIndex}
+          onNext={handleNext}
+          onPrev={handlePrev}
         />
-        <div className="flex-1 relative">
-          <Map
-            events={events}
-            loading={loading}
-            error={error}
-            filter={filter}
-            onFilterChange={setFilter}
-            userLocation={userLocation}
-            mode={mode}
-            activeIndex={activeIndex}
-            onNext={handleNext}
-            onPrev={handlePrev}
-            onLocateMe={requestUserLocation}
-          />
-        </div>
       </div>
 
+      <ChatPanel
+        onEventsUpdate={handleChatEvents}
+        accessToken={accessToken}
+        userLocation={userLocation}
+        isOpen={isChatOpen}
+        onToggle={() => setIsChatOpen((v) => !v)}
+      />
+
       {showSurvey && (
-        <GenreSurvey accessToken={accessToken} onDone={() => setShowSurvey(false)} />
+        <GenreSurvey
+          accessToken={accessToken}
+          onDone={() => {
+            setShowSurvey(false);
+            fetchMapEvents();
+          }}
+        />
       )}
 
       {showAuthModal && (

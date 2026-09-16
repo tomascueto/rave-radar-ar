@@ -1,4 +1,4 @@
-function AuthBar({ currentUser, onOpenAuth, onLogout }) {
+function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onLogout }) {
   if (currentUser) {
     return (
       <div className="flex items-center gap-2">
@@ -13,6 +13,12 @@ function AuthBar({ currentUser, onOpenAuth, onLogout }) {
         <span className="text-sm text-slate-600 hidden sm:inline">
           {currentUser.display_name}
         </span>
+        <button
+          onClick={onOpenPreferences}
+          className="text-xs text-slate-400 hover:text-slate-600 border border-slate-200 rounded-full px-3 py-1.5 transition-colors"
+        >
+          Preferencias
+        </button>
         <button
           onClick={onLogout}
           className="text-xs text-slate-400 hover:text-slate-600 border border-slate-200 rounded-full px-3 py-1.5 transition-colors"
@@ -32,11 +38,16 @@ function AuthBar({ currentUser, onOpenAuth, onLogout }) {
   );
 }
 
-export default function Navbar({ currentUser, onOpenAuth, onLogout }) {
+export default function Navbar({ currentUser, onOpenAuth, onOpenPreferences, onLogout }) {
   return (
     <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 border-b border-slate-200 bg-white">
       <h1 className="font-semibold text-slate-800">Rave Radar AR</h1>
-      <AuthBar currentUser={currentUser} onOpenAuth={onOpenAuth} onLogout={onLogout} />
+      <AuthBar
+        currentUser={currentUser}
+        onOpenAuth={onOpenAuth}
+        onOpenPreferences={onOpenPreferences}
+        onLogout={onLogout}
+      />
     </header>
   );
 }

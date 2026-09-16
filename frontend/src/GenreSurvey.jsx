@@ -18,6 +18,21 @@ export default function GenreSurvey({ accessToken, onDone }) {
       .catch(() => setLoading(false));
   }, []);
 
+  useEffect(() => {
+    // Precarga las preferencias ya guardadas -- para un usuario nuevo
+    // (encuesta inicial) esto simplemente devuelve una lista vacía, sin
+    // efecto distinto al comportamiento anterior. Para alguien que abre
+    // esto para EDITAR, deja lo ya elegido marcado en vez de arrancar
+    // en blanco.
+    if (!accessToken) return;
+    fetch(`${API_BASE}/api/users/me/genres`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((ids) => setSelected(new Set(ids)))
+      .catch(() => {});
+  }, [accessToken]);
+
   function toggle(id) {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -84,7 +99,7 @@ export default function GenreSurvey({ accessToken, onDone }) {
               onClick={onDone}
               className="text-sm text-slate-500 hover:text-slate-700 px-3 py-2"
             >
-              Saltar por ahora
+              Cerrar
             </button>
             <button
               onClick={handleSave}

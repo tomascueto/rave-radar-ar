@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 
 const API_BASE = "http://localhost:8000";
 
-export default function ChatPanel({ onEventsUpdate, accessToken, userLocation }) {
+export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, isOpen, onToggle }) {
   const [messages, setMessages] = useState([
     {
       role: "assistant",
-      text: "¡Hola! Preguntame por eventos de música electrónica — por género, DJ, venue, fecha o lo que se te ocurra.",
+      text: "Hola! Preguntame por eventos de música electrónica — por género, DJ, venue, fecha o lo que se te ocurra.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -56,8 +56,31 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation })
     }
   }
 
+  if (!isOpen) {
+    return (
+      <button
+        onClick={onToggle}
+        title="Abrir chat"
+        className="fixed bottom-6 left-4 z-[1500] w-14 h-14 bg-violet-600 hover:bg-violet-700 rounded-full shadow-lg flex items-center justify-center text-white text-2xl transition-colors"
+      >
+        💬
+      </button>
+    );
+  }
+
   return (
-    <div className="w-96 h-full flex flex-col bg-white border-r border-slate-200">
+    <div className="fixed bottom-6 left-4 z-[1500] w-96 h-[600px] max-h-[80vh] flex flex-col bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200">
+        <span className="font-semibold text-slate-800 text-sm">Rave Radar AR</span>
+        <button
+          onClick={onToggle}
+          title="Cerrar chat"
+          className="text-slate-400 hover:text-slate-600 text-xl leading-none"
+        >
+          ×
+        </button>
+      </div>
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
         {messages.map((msg, i) => (
           <div

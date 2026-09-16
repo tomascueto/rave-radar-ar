@@ -75,6 +75,7 @@ class MapEvent(BaseModel):
     ticket_url: str | None
     flyer_url: str | None
     genres: list[str]
+    affinity_score: float = 0.0
 
 
 class ChatRequest(BaseModel):
@@ -96,7 +97,16 @@ def _extract_coords(venue) -> tuple[float | None, float | None]:
     return point.y, point.x  # to_shape da (x=lng, y=lat)
 
 
-def _event_to_map_event(ev: Event) -> MapEvent | None:
+def _compute_affinity(ev: Event, genre_weights: dict[str, float] | None) -> float:
+    """Misma logica que rerank_by_preference_node en rag/agent.py -- suma
+    de los pesos de cada genero preferido que el evento tiene. 0.0 si no
+    hay usuario logueado o no tiene preferencias guardadas."""
+    if not genre_weights:
+        return 0.0
+    return sum(genre_weights.get(str(eg.genre_id), 0) for eg in ev.genres)
+
+
+def _event_to_map_event(ev: Event, genre_weights: dict[str, float] | None = None) -> MapEvent | None:
     """
     Convierte un Event de SQLAlchemy al formato que consumen el mapa y el
     chat. Devuelve None si el evento no tiene venue o coordenadas.
@@ -117,13 +127,20 @@ def _event_to_map_event(ev: Event) -> MapEvent | None:
         ticket_url=ev.ticket_url,
         flyer_url=ev.flyer_url,
         genres=[eg.genre.name for eg in ev.genres if eg.genre],
+        affinity_score=_compute_affinity(ev, genre_weights),
     )
 
 
 @app.get("/api/events/map", response_model=list[MapEvent])
-def get_map_events(date_from: datetime | None = None, date_to: datetime | None = None):
+def get_map_events(
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    user: User | None = Depends(get_current_user_optional),
+):
     db = SessionLocal()
     try:
+        user_genre_weights = get_user_genre_weights(db, user.id) if user else None
+
         query = db.query(Event).options(
             joinedload(Event.venue),
             joinedload(Event.genres).joinedload(EventGenre.genre),
@@ -139,7 +156,7 @@ def get_map_events(date_from: datetime | None = None, date_to: datetime | None =
         result = []
         skipped = 0
         for ev in events:
-            me = _event_to_map_event(ev)
+            me = _event_to_map_event(ev, user_genre_weights)
             if me is None:
                 skipped += 1
                 continue
@@ -178,7 +195,7 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
 
         map_events = []
         for ev in events:
-            me = _event_to_map_event(ev)
+            me = _event_to_map_event(ev, user_genre_weights)
             if me is not None:
                 map_events.append(me)
 

@@ -19,6 +19,9 @@ const FILTERS = [
   { key: "mes", label: "Este mes" },
 ];
 
+const NEUTRAL_COLOR = "#7C3AED";
+
+
 export function getDateRange(filterKey) {
   const now = new Date();
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -58,22 +61,22 @@ export function getDateRange(filterKey) {
   }
 }
 
-function markerStyle(precision) {
-  switch (precision) {
-    case "exact":
-      return { color: "#7C3AED", radius: 9, opacity: 1 };
-    case "llm_search":
-      return { color: "#2DD4BF", radius: 8, opacity: 1 };
-    case "city":
-    default:
-      return { color: "#94A3B8", radius: 6, opacity: 0.55 };
-  }
+function affinityColor(ratio) {
+  if (ratio >= 0.5) return "#16A34A"; // verde fuerte: entre los que mas coinciden
+  if (ratio > 0) return "#86EFAC"; // verde claro: coincide algo, no es de los mejores
+  return "#FB923C"; // naranja: no coincide con ningun genero preferido
 }
 
-function makeIcon(precision, isActive) {
-  const { color, radius, opacity } = markerStyle(precision);
+function makeIcon(precision, isActive, affinityRatio, isPersonalized) {
+  const color = isPersonalized ? affinityColor(affinityRatio) : NEUTRAL_COLOR;
+  // La opacidad, no el color, es lo que ahora comunica precision
+  // geografica: un venue sin direccion real (fallback a ciudad) se
+  // dibuja casi invisible, en vez de ocupar un color propio.
+  const opacity = precision === "city" ? 0.25 : 1;
+  const radius = 8;
   const size = isActive ? radius * 2 + 10 : radius * 2;
   const border = isActive ? 3 : 2;
+
   return L.divIcon({
     className: "",
     html: `<div style="
@@ -309,12 +312,18 @@ function PopupContent({ ev }) {
 
 export default function Map({
   events, loading, error, filter, onFilterChange,
-  mode, activeIndex, onNext, onPrev,userLocation, onLocateMe
+  mode, activeIndex, onNext, onPrev,userLocation, onLocateMe, isPersonalized
 }) {
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
 
   const isChatMode = mode === "chat" && events.length > 0;
   const activeEvent = isChatMode ? events[activeIndex] : null;
+
+  // Normaliza cada score de afinidad contra el maximo actualmente
+  // visible en el mapa -- asi el anillo siempre se ve proporcional, sin
+  // depender de valores absolutos fijos que van a cambiar a medida que
+  // se agreguen pesos reales por genero.
+  const maxAffinity = Math.max(0, ...events.map((ev) => ev.affinity_score || 0));
 
   return (
     <div className="relative h-full w-full">
@@ -322,9 +331,13 @@ export default function Map({
       <button
         onClick={onLocateMe}
         title="Centrar en mi ubicación"
-        className="absolute bottom-6 right-4 z-[1000] w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center text-lg hover:bg-slate-50 transition-colors"
+        className="absolute bottom-6 right-4 z-[1000] w-10 h-10 bg-white rounded-full shadow-lg flex items-center justify-center text-slate-600 hover:bg-slate-50 transition-colors"
       >
-        📍
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="12" cy="12" r="3" fill="currentColor" />
+          <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.5" />
+          <path d="M12 2V5M12 19V22M22 12H19M5 12H2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
       </button>
 
       {isChatMode && (
@@ -353,7 +366,12 @@ export default function Map({
           <Marker
             key={ev.id}
             position={[ev.lat, ev.lng]}
-            icon={makeIcon(ev.venue_precision, isChatMode && idx === activeIndex)}
+            icon={makeIcon(
+              ev.venue_precision,
+              isChatMode && idx === activeIndex,
+              maxAffinity > 0 ? (ev.affinity_score || 0) / maxAffinity : 0,
+              isPersonalized
+            )}
           >
             <Popup maxWidth={260}>
               <PopupContent ev={ev} />
