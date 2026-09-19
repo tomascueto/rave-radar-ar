@@ -47,6 +47,7 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [genreWeights, setGenreWeights] = useState({});
 
   function requestUserLocation() {
     // Silencioso ante rechazo, timeout, o falta de soporte -- la
@@ -116,6 +117,23 @@ function App() {
       })
       .catch(() => {});
   }, [accessToken, currentUser]);
+
+  function fetchGenreWeights() {
+    if (!accessToken) {
+      setGenreWeights({});
+      return;
+    }
+    fetch(`${API_BASE}/api/users/me/genre-weights`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((res) => (res.ok ? res.json() : {}))
+      .then(setGenreWeights)
+      .catch(() => setGenreWeights({}));
+  }
+
+  useEffect(() => {
+    fetchGenreWeights();
+  }, [accessToken]);
 
   function handleAuthSuccess(token) {
     setAccessToken(token);
@@ -195,7 +213,8 @@ function App() {
           onFilterChange={setFilter}
           userLocation={userLocation}
           onLocateMe={requestUserLocation}
-          isPersonalized={!!currentUser}
+          genreWeights={genreWeights}
+          onCloseCarousel={fetchMapEvents}
           mode={mode}
           activeIndex={activeIndex}
           onNext={handleNext}
@@ -216,7 +235,7 @@ function App() {
           accessToken={accessToken}
           onDone={() => {
             setShowSurvey(false);
-            fetchMapEvents();
+            fetchGenreWeights();
           }}
         />
       )}

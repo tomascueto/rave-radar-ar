@@ -1,0 +1,460 @@
+<title>Grafo RAG Híbrido</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#F2F4F7; --surface:#FFFFFF; --surface-2:#E7EBF0;
+    --ink:#161A22; --ink-muted:#5B6472; --border:#C7CED8;
+    --det:#0E7C86; --det-bg:#E3F3F1;
+    --ia:#7C3AED; --ia-bg:#EFE7FB;
+    --struct:#475467; --struct-bg:#E5E8ED;
+    --select:#2563EB;
+    --edge:#8A94A3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10141C; --surface:#171C26; --surface-2:#1F2530;
+      --ink:#E7EAF0; --ink-muted:#94A0B4; --border:#2B3341;
+      --det:#3FD0BA; --det-bg:rgba(63,208,186,0.14);
+      --ia:#B199F7; --ia-bg:rgba(177,153,247,0.16);
+      --struct:#9AA5B6; --struct-bg:rgba(154,165,182,0.12);
+      --select:#60A5FA;
+      --edge:#5B6472;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10141C; --surface:#171C26; --surface-2:#1F2530;
+    --ink:#E7EAF0; --ink-muted:#94A0B4; --border:#2B3341;
+    --det:#3FD0BA; --det-bg:rgba(63,208,186,0.14);
+    --ia:#B199F7; --ia-bg:rgba(177,153,247,0.16);
+    --struct:#9AA5B6; --struct-bg:rgba(154,165,182,0.12);
+    --select:#60A5FA;
+    --edge:#5B6472;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    padding-inline:20px; padding-block:28px 48px;
+    display:flex; flex-direction:column; gap:22px;
+  }
+  code, .mono{ font-family:'IBM Plex Mono', ui-monospace, monospace; }
+
+  header{ max-width:920px; }
+  header .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--struct); margin:0 0 8px;
+  }
+  h1{ font-size:26px; line-height:1.25; margin:0 0 8px; text-wrap:balance; font-weight:700; }
+  header p{ margin:0; color:var(--ink-muted); font-size:14.5px; line-height:1.55; max-width:70ch; }
+  header code{ background:var(--surface-2); padding:1px 6px; border-radius:4px; font-size:.92em; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .legend button{
+    font-family:'IBM Plex Sans', sans-serif; font-size:12.5px; font-weight:600;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink);
+    border-radius:20px; padding:6px 14px 6px 10px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:border-color .15s, background .15s;
+  }
+  .legend button .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .legend button[aria-pressed="true"]{ border-color:var(--select); background:var(--surface-2); }
+  .legend .dot.det{ background:var(--det); }
+  .legend .dot.ia{ background:var(--ia); }
+  .legend .dot.all{ background:var(--struct); }
+
+  main{
+    display:flex; flex-direction:column; gap:22px; max-width:1400px;
+  }
+
+  .diagram-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:18px 18px 14px;
+  }
+  .diagram-scroll{ overflow-x:auto; }
+  figure.diagram{ margin:0; }
+  figure.diagram svg{ display:block; width:100%; min-width:1040px; height:auto; }
+  figcaption{
+    margin-top:10px; font-size:12.5px; color:var(--ink-muted); line-height:1.5;
+  }
+
+  .node rect.box{ fill:var(--surface); stroke:var(--border); stroke-width:1.4; transition:stroke .15s, filter .15s; }
+  .node.cat-det rect.box{ fill:var(--det-bg); }
+  .node.cat-ia rect.box{ fill:var(--ia-bg); }
+  .node.cat-struct rect.box{ fill:var(--struct-bg); }
+  .node{ cursor:pointer; }
+  .node:focus{ outline:none; }
+  .node:focus rect.box, .node:hover rect.box{ stroke:var(--select); stroke-width:2.2; }
+  .node.selected rect.box{ stroke:var(--select); stroke-width:2.6; }
+  .node.dimmed{ opacity:.32; }
+  text{ fill:var(--ink); font-family:'IBM Plex Sans', sans-serif; }
+  .node .title{ font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:13.5px; }
+  .node .file{ fill:var(--ink-muted); font-size:10px; font-family:'IBM Plex Mono', monospace; }
+  .node .detail{ fill:var(--ink-muted); font-size:9.6px; }
+  .node .tag{ font-size:9px; font-weight:700; letter-spacing:.04em; }
+  .node .tag.det{ fill:var(--det); }
+  .node .tag.ia{ fill:var(--ia); }
+  .node .write{ fill:var(--ink-muted); font-size:9.6px; font-family:'IBM Plex Mono', monospace; }
+  .edge{ stroke:var(--edge); stroke-width:1.6; fill:none; }
+  .edge-label{ fill:var(--ink-muted); font-size:10px; font-family:'IBM Plex Mono', monospace; }
+  .diamond{ fill:var(--surface-2); stroke:var(--edge); stroke-width:1.4; }
+  .diamond-label{ fill:var(--ink); font-size:10.5px; font-family:'IBM Plex Mono', monospace; font-weight:600; }
+  .pill{ fill:var(--struct-bg); stroke:var(--border); stroke-width:1.2; }
+  .pill-label{ fill:var(--struct); font-size:12px; font-weight:700; font-family:'IBM Plex Mono', monospace; }
+  .frame{ fill:none; stroke:var(--border); stroke-dasharray:5 5; stroke-width:1.4; }
+  .frame-label{ fill:var(--ink-muted); font-size:11px; font-family:'IBM Plex Mono', monospace; }
+
+  .lower{ display:flex; gap:18px; flex-wrap:wrap; align-items:stretch; }
+  #detail-panel{
+    flex:1 1 420px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:20px 22px; min-height:220px;
+  }
+  #detail-panel .kicker{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  #detail-panel .kicker .dot{ width:10px; height:10px; border-radius:50%; }
+  #detail-panel .kicker .dot.det{ background:var(--det); }
+  #detail-panel .kicker .dot.ia{ background:var(--ia); }
+  #detail-panel .kicker .dot.struct{ background:var(--struct); }
+  #detail-panel .kicker span.cat{ font-size:11.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-muted); }
+  #detail-panel h2{ font-family:'IBM Plex Mono', monospace; font-size:19px; margin:0 0 4px; }
+  #detail-panel .file{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--ink-muted); margin:0 0 14px; }
+  #detail-panel ul{ margin:0 0 14px; padding-left:18px; font-size:13.5px; line-height:1.6; color:var(--ink); }
+  #detail-panel ul li{ margin-bottom:6px; }
+  #detail-panel .writes{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-muted);
+    border-top:1px dashed var(--border); padding-top:10px;
+  }
+  #detail-panel .writes b{ color:var(--ink); font-weight:600; }
+  #detail-panel .hint{ color:var(--ink-muted); font-size:14px; line-height:1.6; }
+
+  aside#state-ref{
+    flex:1 1 300px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:20px 22px;
+  }
+  aside#state-ref h3{ font-size:13px; margin:0 0 4px; }
+  aside#state-ref .file{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--ink-muted); margin:0 0 12px; }
+  aside#state-ref dl{ margin:0; display:grid; grid-template-columns:auto 1fr; gap:6px 12px; font-size:12.5px; }
+  aside#state-ref dt{ font-family:'IBM Plex Mono', monospace; color:var(--ink); font-weight:600; white-space:nowrap; }
+  aside#state-ref dd{ margin:0; color:var(--ink-muted); }
+
+  @media (max-width:640px){
+    h1{ font-size:22px; }
+    #detail-panel, aside#state-ref{ flex-basis:100%; }
+  }
+</style>
+
+<header>
+  <p class="eyebrow">rag/agent.py &mdash; grafo de estado</p>
+  <h1>Pipeline híbrido de RAG, formalizado como agente de grafo de estado (LangGraph)</h1>
+  <p>
+    No es una cadena de funciones encadenadas: es un <code>StateGraph</code> compilado con 8 nodos y una
+    arista condicional de primera clase. Cada nodo lee y escribe un mismo objeto de estado compartido
+    (<code>AgentState</code>) que viaja completo de nodo a nodo. Hacé click en cualquier nodo para ver
+    su detalle.
+  </p>
+  <div class="legend" role="group" aria-label="Filtrar por tipo de lógica">
+    <button type="button" data-filter="all" aria-pressed="true"><span class="dot all"></span>Todos</button>
+    <button type="button" data-filter="det" aria-pressed="false"><span class="dot det"></span>Determinístico &middot; Python / SQL / PostGIS / Qdrant</button>
+    <button type="button" data-filter="ia" aria-pressed="false"><span class="dot ia"></span>IA generativa &middot; Gemini</button>
+  </div>
+</header>
+
+<main>
+  <div class="diagram-card">
+    <div class="diagram-scroll">
+      <figure class="diagram">
+        <svg viewBox="0 0 1900 720" role="img"
+             aria-label="Grafo de estado LangGraph: START, segment (IA), route (determinístico, incluye resolución de entidades pg_trgm e interpretación de fecha/precio/distancia), arista condicional pick_strategy hacia execute_sql, execute_qdrant o execute_empty (los tres determinísticos), que convergen en filter_mappable, luego rerank_by_preference, luego generate (IA), y END.">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"></path>
+            </marker>
+          </defs>
+
+          <!-- frame: langgraph boundary -->
+          <rect class="frame" x="115" y="55" width="1610" height="640" rx="16"></rect>
+          <text class="frame-label" x="132" y="80">StateGraph(AgentState) &middot; graph.compile()</text>
+
+          <!-- edges (drawn first, under nodes) -->
+          <path class="edge" d="M100,380 H140" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M320,380 H360" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M600,380 H606" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M674,380 L720,140" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M674,380 L720,380" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M674,380 L720,620" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M920,140 L970,380" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M920,380 L970,380" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M920,620 L970,380" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M976,380 H1000" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M1200,380 H1240" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M1460,380 H1500" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M1690,380 H1730" marker-end="url(#arrow)"></path>
+
+          <text class="edge-label" x="722" y="128">sql</text>
+          <text class="edge-label" x="722" y="368">qdrant</text>
+          <text class="edge-label" x="722" y="648">empty</text>
+
+          <!-- START -->
+          <rect class="pill" x="20" y="355" width="80" height="50" rx="25"></rect>
+          <text class="pill-label" x="60" y="385" text-anchor="middle">START</text>
+
+          <!-- segment -->
+          <g class="node cat-ia" data-node="segment" tabindex="0" role="button" aria-label="Nodo segment">
+            <rect class="box" x="140" y="310" width="180" height="140" rx="10"></rect>
+            <text class="tag ia" x="156" y="330">IA &middot; GEMINI</text>
+            <text class="title" x="156" y="355">segment</text>
+            <text class="file" x="156" y="372">query_segmenter.py</text>
+            <text class="detail" x="156" y="392">entity_candidates,</text>
+            <text class="detail" x="156" y="404">date/price/location_expr,</text>
+            <text class="detail" x="156" y="416">is_self_location</text>
+            <text class="write" x="156" y="438">&rarr; state.segmented</text>
+          </g>
+
+          <!-- route -->
+          <g class="node cat-det" data-node="route" tabindex="0" role="button" aria-label="Nodo route">
+            <rect class="box" x="360" y="280" width="240" height="200" rx="10"></rect>
+            <text class="tag det" x="376" y="300">DETERMIN&Iacute;STICO</text>
+            <text class="title" x="376" y="325">route</text>
+            <text class="file" x="376" y="342">router.py</text>
+            <text class="detail" x="376" y="364">&middot; entity_resolver.py (pg_trgm)</text>
+            <text class="detail" x="376" y="380">&middot; interpret_date / price /</text>
+            <text class="detail" x="376" y="393">&nbsp;&nbsp;distance_km</text>
+            <text class="detail" x="376" y="409">&middot; decide strategy</text>
+            <text class="write" x="376" y="460">&rarr; state.filters, .strategy,</text>
+            <text class="write" x="376" y="472">&nbsp;&nbsp;.semantic_text</text>
+          </g>
+
+          <!-- conditional edge diamond -->
+          <polygon class="diamond" points="640,346 674,380 640,414 606,380"></polygon>
+          <text class="diamond-label" x="640" y="335" text-anchor="middle">pick_strategy</text>
+
+          <!-- execute_sql -->
+          <g class="node cat-det" data-node="execute_sql" tabindex="0" role="button" aria-label="Nodo execute_sql">
+            <rect class="box" x="720" y="90" width="200" height="100" rx="10"></rect>
+            <text class="tag det" x="734" y="110">DETERMIN&Iacute;STICO</text>
+            <text class="title" x="734" y="133">execute_sql</text>
+            <text class="file" x="734" y="149">query_executor.py</text>
+            <text class="detail" x="734" y="166">Postgres + PostGIS</text>
+            <text class="detail" x="734" y="178">ST_DWithin(geography)</text>
+          </g>
+
+          <!-- execute_qdrant -->
+          <g class="node cat-det" data-node="execute_qdrant" tabindex="0" role="button" aria-label="Nodo execute_qdrant">
+            <rect class="box" x="720" y="330" width="200" height="100" rx="10"></rect>
+            <text class="tag det" x="734" y="350">DETERMIN&Iacute;STICO</text>
+            <text class="title" x="734" y="373">execute_qdrant</text>
+            <text class="file" x="734" y="389">query_executor.py</text>
+            <text class="detail" x="734" y="406">Qdrant vectorial +</text>
+            <text class="detail" x="734" y="418">post-filtro Haversine</text>
+          </g>
+
+          <!-- execute_empty -->
+          <g class="node cat-det" data-node="execute_empty" tabindex="0" role="button" aria-label="Nodo execute_empty">
+            <rect class="box" x="720" y="570" width="200" height="100" rx="10"></rect>
+            <text class="tag det" x="734" y="590">DETERMIN&Iacute;STICO</text>
+            <text class="title" x="734" y="613">execute_empty</text>
+            <text class="file" x="734" y="629">agent.py (interno)</text>
+            <text class="detail" x="734" y="646">ubicaci&oacute;n no resuelta</text>
+            <text class="detail" x="734" y="658">&rarr; sin consulta</text>
+          </g>
+
+          <!-- filter_mappable -->
+          <g class="node cat-det" data-node="filter_mappable" tabindex="0" role="button" aria-label="Nodo filter_mappable">
+            <rect class="box" x="1000" y="325" width="200" height="110" rx="10"></rect>
+            <text class="tag det" x="1014" y="345">DETERMIN&Iacute;STICO</text>
+            <text class="title" x="1014" y="368">filter_mappable</text>
+            <text class="file" x="1014" y="384">agent.py (interno)</text>
+            <text class="detail" x="1014" y="401">descarta sin venue /</text>
+            <text class="detail" x="1014" y="413">coordenadas</text>
+            <text class="write" x="1014" y="428">&rarr; state.events (filtrado)</text>
+          </g>
+
+          <!-- rerank_by_preference -->
+          <g class="node cat-det" data-node="rerank" tabindex="0" role="button" aria-label="Nodo rerank_by_preference">
+            <rect class="box" x="1240" y="325" width="220" height="110" rx="10"></rect>
+            <text class="tag det" x="1254" y="345">DETERMIN&Iacute;STICO</text>
+            <text class="title" x="1254" y="368">rerank_by_preference</text>
+            <text class="file" x="1254" y="384">agent.py (interno)</text>
+            <text class="detail" x="1254" y="401">reordena por &Sigma; pesos</text>
+            <text class="detail" x="1254" y="413">de g&eacute;nero (sort estable)</text>
+            <text class="write" x="1254" y="428">&rarr; state.events (reordenado)</text>
+          </g>
+
+          <!-- generate -->
+          <g class="node cat-ia" data-node="generate" tabindex="0" role="button" aria-label="Nodo generate">
+            <rect class="box" x="1500" y="310" width="190" height="140" rx="10"></rect>
+            <text class="tag ia" x="1514" y="330">IA &middot; GEMINI</text>
+            <text class="title" x="1514" y="353">generate</text>
+            <text class="file" x="1514" y="369">response_generator.py</text>
+            <text class="detail" x="1514" y="389">espa&ntilde;ol rioplatense,</text>
+            <text class="detail" x="1514" y="401">m&aacute;x. 5 eventos visibles</text>
+            <text class="detail" x="1514" y="413">para el modelo</text>
+            <text class="write" x="1514" y="438">&rarr; state.response_text</text>
+          </g>
+
+          <!-- END -->
+          <rect class="pill" x="1730" y="355" width="80" height="50" rx="25"></rect>
+          <text class="pill-label" x="1770" y="385" text-anchor="middle">END</text>
+        </svg>
+        <figcaption>
+          Flujo real de <code>rag/agent.py</code>: <code>segment &rarr; route &rarr; (sql | qdrant | empty) &rarr; filter_mappable &rarr; rerank_by_preference &rarr; generate</code>.
+          La bifurcación no es un <code>if</code> escondido dentro de una función: es <code>add_conditional_edges()</code>, una arista explícita del grafo. El grafo es <em>stateless</em> entre turnos de conversación.
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="lower">
+    <section id="detail-panel" aria-live="polite">
+      <p class="hint">
+        Seleccioná un nodo del grafo para ver qué archivo lo implementa, qué hace exactamente,
+        y qué parte del estado compartido lee o escribe.
+      </p>
+    </section>
+
+    <aside id="state-ref">
+      <h3>Estado compartido &mdash; <code class="mono">AgentState</code></h3>
+      <p class="file">TypedDict que viaja completo entre los 8 nodos</p>
+      <dl>
+        <dt>query</dt><dd>texto original del usuario</dd>
+        <dt>segmented</dt><dd>salida de Gemini (segment)</dd>
+        <dt>filters</dt><dd>filtros ya resueltos (route)</dd>
+        <dt>strategy</dt><dd>"sql" | "qdrant" | "empty"</dd>
+        <dt>semantic_text</dt><dd>texto libre para Qdrant</dd>
+        <dt>events</dt><dd>resultados (mutado por 5 nodos)</dd>
+        <dt>user_genre_weights</dt><dd>preferencias del usuario logueado</dd>
+        <dt>user_lat / user_lng</dt><dd>geolocalizaci&oacute;n del navegador</dd>
+        <dt>response_text</dt><dd>salida final (generate)</dd>
+      </dl>
+    </aside>
+  </div>
+</main>
+
+<script>
+(function(){
+  var NODES = {
+    segment: {
+      cat: 'ia', title: 'segment', file: 'rag/query_segmenter.py &middot; segment_node',
+      bullets: [
+        'Llamada a Gemini 2.5 Flash con <code>temperature=0.0</code> y un schema Pydantic estricto (<code>QuerySegments</code>, <code>response_mime_type="application/json"</code>) &mdash; nunca texto libre, siempre JSON validado.',
+        'Extrae <code>entity_candidates</code> sin clasificarlos todavía, más <code>date_expr</code>, <code>price_expr</code>, <code>wants_cheap</code> y <code>location_expr</code>.',
+        '<code>is_self_location</code> distingue "cerca mío" (posición propia) de "cerca de Palermo" (lugar nombrado) &mdash; la única decisión de esta clase que sí se le pide a un LLM, porque es genuinamente lingüística.'
+      ],
+      writes: 'escribe <b>state.segmented</b>'
+    },
+    route: {
+      cat: 'det', title: 'route', file: 'rag/router.py &middot; route_node &rarr; route_from_segments()',
+      bullets: [
+        '100% determinístico, sin ningún LLM. Reutiliza <code>resolve_candidates()</code> de <code>entity_resolver.py</code>: valida cada candidato contra Postgres con similitud de trigramas (<code>pg_trgm</code>) sobre <code>djs / venues / genres / cities</code>, umbral <code>MIN_SCORE=0.4</code>.',
+        '<code>interpret_date()</code> resuelve "este finde", rangos amplios y fechas ordinales con calendario + <code>dateparser</code>; <code>interpret_price()</code> calcula el percentil 0.33 si <code>wants_cheap</code>; <code>interpret_distance_km()</code> da el radio (explícito o default 10km) solo si <code>is_self_location</code> y ya llegaron coordenadas del navegador.',
+        'Decide la estrategia final (<code>sql</code> / <code>qdrant</code> / <code>empty</code>) como una arista condicional de primera clase del grafo, no un valor de retorno opaco.'
+      ],
+      writes: 'escribe <b>state.filters</b>, <b>state.strategy</b>, <b>state.semantic_text</b>'
+    },
+    execute_sql: {
+      cat: 'det', title: 'execute_sql', file: 'rag/query_executor.py &middot; execute_sql_node',
+      bullets: [
+        'Query directa a PostgreSQL con los filtros ya resueltos por <code>route</code> (venue, ciudad, fecha, precio, dj, género).',
+        'Cuando el pedido es sobre la posición propia del usuario, filtra distancia real con PostGIS: <code>ST_DWithin</code> sobre <code>geography</code>, no una comparación ingenua de coordenadas.',
+        'Muestreo con <code>func.random()</code> antes de cortar por el límite, para no sesgar hacia el día con más eventos.'
+      ],
+      writes: 'escribe <b>state.events</b>'
+    },
+    execute_qdrant: {
+      cat: 'det', title: 'execute_qdrant', file: 'rag/query_executor.py &middot; execute_qdrant_node',
+      bullets: [
+        'Genera el embedding de <code>semantic_text</code> con un modelo local (<code>SentenceTransformer</code>) &mdash; no es una llamada a Gemini, por eso este nodo cuenta como determinístico.',
+        'Busca por similitud vectorial en Qdrant con filtro de payload, e hidrata los resultados desde Postgres (fuente de verdad de <code>is_active</code>, porque el payload de Qdrant no se reactualiza tras indexar).',
+        'Si corresponde, aplica un post-filtro de distancia en Python (fórmula de Haversine) sobre los eventos ya recuperados &mdash; limitación conocida: se aplica después del límite de Qdrant, puede devolver menos resultados de los pedidos.'
+      ],
+      writes: 'escribe <b>state.events</b>'
+    },
+    execute_empty: {
+      cat: 'det', title: 'execute_empty', file: 'rag/agent.py &middot; execute_empty_node',
+      bullets: [
+        'Se llega aquí cuando <code>route</code> determinó que la ubicación pedida no se puede resolver: un lugar nombrado sin geocodificar, o "cerca mío" sin que el navegador haya compartido coordenadas todavía.',
+        'No consulta nada &mdash; corta la búsqueda directamente.'
+      ],
+      writes: 'escribe <b>state.events = []</b>'
+    },
+    filter_mappable: {
+      cat: 'det', title: 'filter_mappable', file: 'rag/agent.py &middot; filter_mappable_node (interno del grafo, no un archivo rag/*.py aparte)',
+      bullets: [
+        'Nodo del grafo compartido por las tres ramas de ejecución (sql, qdrant, empty).',
+        'Descarta cualquier evento sin <code>venue</code> asignado o sin coordenadas resueltas &mdash; el sistema nunca muestra ni menciona un evento que no puede ubicar en el mapa.',
+        'Solo filtra: no reordena ni agrega nada.'
+      ],
+      writes: 'muta <b>state.events</b> (filtrado)'
+    },
+    rerank: {
+      cat: 'det', title: 'rerank_by_preference', file: 'rag/agent.py &middot; rerank_by_preference_node (interno del grafo)',
+      bullets: [
+        'Si hay un usuario logueado con <code>user_genre_weights</code> guardados, reordena <code>state.events</code> por la <b>suma</b> de los pesos de cada género que el evento comparte con el usuario &mdash; afinidad graduada, no un corte binario de "coincide / no coincide".',
+        'Sort estable: eventos con el mismo score conservan su orden previo (cronológico en la rama SQL, por relevancia semántica en la rama Qdrant).',
+        'Si no hay preferencias guardadas, no hace nada.'
+      ],
+      writes: 'muta <b>state.events</b> (reordenado, nunca agrega ni descarta)'
+    },
+    generate: {
+      cat: 'ia', title: 'generate', file: 'rag/response_generator.py &middot; generate_node &rarr; generate_response()',
+      bullets: [
+        'Llamada a Gemini 2.5 Flash (<code>temperature=0.4</code>) con un system prompt extenso en español rioplatense y reglas estrictas anti-alucinación.',
+        'El contexto nunca incluye más de <code>MAX_EVENTS_SHOWN=5</code> eventos, aunque haya más &mdash; así el modelo nunca tiene delante un número que pueda contradecir.',
+        'El aviso de "hay más eventos para ver en el mapa" se agrega después, en código, con el número real &mdash; nunca redactado por el LLM.'
+      ],
+      writes: 'escribe <b>state.response_text</b>'
+    }
+  };
+
+  var svg = document.querySelector('svg');
+  var panel = document.getElementById('detail-panel');
+  var nodeEls = Array.prototype.slice.call(svg.querySelectorAll('.node'));
+  var legendBtns = Array.prototype.slice.call(document.querySelectorAll('.legend button'));
+  var currentFilter = 'all';
+
+  function catLabel(cat){
+    if(cat === 'ia') return 'IA generativa &middot; Gemini';
+    if(cat === 'det') return 'Determinístico &middot; Python / SQL';
+    return 'Estructura del grafo';
+  }
+
+  function renderPanel(id){
+    var d = NODES[id];
+    if(!d) return;
+    panel.innerHTML =
+      '<div class="kicker"><span class="dot ' + d.cat + '"></span>' +
+      '<span class="cat">' + catLabel(d.cat) + '</span></div>' +
+      '<h2>' + d.title + '</h2>' +
+      '<p class="file">' + d.file + '</p>' +
+      '<ul>' + d.bullets.map(function(b){ return '<li>' + b + '</li>'; }).join('') + '</ul>' +
+      '<p class="writes">' + d.writes + '</p>';
+  }
+
+  function selectNode(el){
+    nodeEls.forEach(function(n){ n.classList.remove('selected'); });
+    el.classList.add('selected');
+    renderPanel(el.getAttribute('data-node'));
+  }
+
+  nodeEls.forEach(function(el){
+    el.addEventListener('click', function(){ selectNode(el); });
+    el.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); selectNode(el); }
+    });
+  });
+
+  function applyFilter(filter){
+    currentFilter = filter;
+    legendBtns.forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-filter') === filter ? 'true' : 'false');
+    });
+    nodeEls.forEach(function(el){
+      if(filter === 'all'){ el.classList.remove('dimmed'); return; }
+      var isMatch = el.classList.contains('cat-' + filter);
+      el.classList.toggle('dimmed', !isMatch);
+    });
+  }
+
+  legendBtns.forEach(function(b){
+    b.addEventListener('click', function(){ applyFilter(b.getAttribute('data-filter')); });
+  });
+})();
+</script>

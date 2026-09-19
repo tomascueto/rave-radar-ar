@@ -75,6 +75,19 @@ def get_my_genre_preferences(
     return list(get_user_genre_ids(db, user.id))
 
 
+@router.get("/me/genre-weights", response_model=dict[str, float])
+def get_my_genre_weights(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Pesos por genero (genre_id -> weight), para que el frontend calcule
+    la afinidad de cada evento del lado del cliente -- así el color de un
+    pin refleja siempre las preferencias actuales, sin importar cuándo se
+    recuperó ese evento en particular (un resultado viejo del chat, por
+    ejemplo, no queda con un color desactualizado)."""
+    return get_user_genre_weights(db, user.id)
+
+
 @router.put("/me/genres")
 def set_my_genre_preferences(
     body: GenrePreferencesIn,
