@@ -1,1 +1,753 @@
 @import "tailwindcss";
+
+@font-face {
+  font-family: "Anton";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/anton-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/courier-prime-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Courier Prime";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/courier-prime-latin-700.woff2") format("woff2");
+}
+
+/* Archivo -- reemplaza a Courier Prime fuera de LandingPage (FilterBar,
+   EventCard, acciones del Navbar). Feedback real de usuario: el monoespaciado
+   "tipeado" no funcionaba fuera del flyer de bienvenida -- Anton se queda
+   exclusivamente como wordmark del Navbar, Courier Prime queda exclusivo
+   de LandingPage. Ver DESIGN.md. */
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-latin-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-latin-600.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url("./assets/fonts/archivo-latin-700.woff2") format("woff2");
+}
+
+/* Tokens de la dirección "El Flyer Xerografiado" -- en :root para poder
+   reusarlos fuera de LandingPage (Navbar, EventCard) sin duplicar valores;
+   ver DESIGN.md por el alcance de cada aplicación. */
+:root {
+  --flyer-ink: #0b0b10;
+  --flyer-violet: #7c3aed;
+  --flyer-violet-deep: #6d28d9;
+  --flyer-paper: #f5f1e6;
+  --flyer-pink: #ff3d81;
+}
+
+.flyer-landing {
+  background: var(--flyer-ink);
+}
+
+.flyer-map,
+.flyer-map .leaflet-container {
+  background: var(--flyer-ink);
+}
+
+.flyer-map-layer {
+  filter: grayscale(1) brightness(0.58) contrast(1.2) blur(13px);
+  transform: scale(1.06);
+}
+
+.flyer-duotone {
+  background: linear-gradient(155deg, var(--flyer-ink) 5%, var(--flyer-violet) 140%);
+  mix-blend-mode: multiply;
+}
+
+.flyer-diagonal-cut {
+  background: var(--flyer-ink);
+  opacity: 0.62;
+  clip-path: polygon(0 0, 38% 0, 62% 100%, 0 100%);
+}
+
+.flyer-scrim {
+  background: rgba(11, 11, 16, 0.08);
+}
+
+.flyer-content-scrim {
+  background: linear-gradient(
+    180deg,
+    rgba(11, 11, 16, 0.15) 0%,
+    rgba(11, 11, 16, 0.62) 20%,
+    rgba(11, 11, 16, 0.62) 80%,
+    rgba(11, 11, 16, 0.15) 100%
+  );
+}
+
+.flyer-halftone {
+  background-image: radial-gradient(circle, rgba(245, 241, 230, 0.5) 0.8px, transparent 1.1px);
+  background-size: 4px 4px;
+  mix-blend-mode: overlay;
+  opacity: 0.35;
+}
+
+.flyer-title {
+  font-family: "Anton", system-ui, sans-serif;
+  color: var(--flyer-paper);
+  letter-spacing: -0.03em;
+}
+
+.flyer-mono {
+  font-family: "Courier Prime", ui-monospace, monospace;
+}
+
+.flyer-sans {
+  font-family: "Archivo", system-ui, sans-serif;
+}
+
+.flyer-tagline {
+  color: var(--flyer-paper);
+}
+
+.flyer-rule {
+  height: 1px;
+  background: var(--flyer-violet);
+}
+
+.flyer-cta {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%);
+}
+
+.flyer-cta:hover {
+  background: var(--flyer-violet-deep);
+}
+
+.flyer-cta:active {
+  transform: scale(0.97) translateY(1px);
+}
+
+.flyer-cta:focus-visible {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 4px;
+}
+
+@keyframes flyer-scan {
+  0% {
+    transform: translateY(-110%);
+    opacity: 0.9;
+  }
+  85% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(360%);
+    opacity: 0;
+  }
+}
+
+.flyer-scanbar {
+  position: absolute;
+  inset: 0;
+  height: 40%;
+  background: linear-gradient(
+    180deg,
+    transparent,
+    rgba(245, 241, 230, 0.55) 45%,
+    rgba(124, 58, 237, 0.6) 55%,
+    transparent
+  );
+  mix-blend-mode: screen;
+  animation: flyer-scan 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes flyer-bloom {
+  0% {
+    box-shadow: 0 8px 20px -8px rgba(0, 0, 0, 0.6), 0 6px 0 0 rgba(124, 58, 237, 0);
+  }
+  55% {
+    box-shadow: 0 14px 34px -10px rgba(0, 0, 0, 0.65), 0 10px 40px 4px rgba(124, 58, 237, 0.55);
+  }
+  100% {
+    box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.55), 0 8px 26px 2px rgba(124, 58, 237, 0.4);
+  }
+}
+
+.flyer-cta-bloom {
+  animation: flyer-bloom 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both;
+}
+
+@keyframes flyer-flicker {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  40% {
+    opacity: 0.5;
+  }
+  55% {
+    opacity: 0.2;
+  }
+  70% {
+    opacity: 0.4;
+  }
+}
+
+.flyer-halftone-live {
+  animation: flyer-flicker 1.1s ease-out 1;
+}
+
+/* Radar -- estado de carga (girando) y estado vacío (un pulso único) del
+   mapa. Ver Map.jsx: RadarIcon, y el bloque "!loading && events.length === 0". */
+@keyframes flyer-radar-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.flyer-radar-spin {
+  animation: flyer-radar-spin 2.2s linear infinite;
+  transform-origin: 50% 50%;
+}
+
+@keyframes flyer-radar-ping {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+.flyer-radar-ping::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid var(--flyer-violet);
+  animation: flyer-radar-ping 1.8s cubic-bezier(0.16, 1, 0.3, 1) 1;
+}
+
+/* Entrada de pines nuevos en el mapa -- ver makeIcon/prevEventIdsRef en
+   Map.jsx. Solo anima hasta el valor de opacidad que ya decide la lógica
+   de precisión (--pin-final-opacity); nunca reemplaza esa lógica. */
+@keyframes flyer-pin-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  to {
+    opacity: var(--pin-final-opacity, 1);
+    transform: scale(1);
+  }
+}
+
+.flyer-pin-enter {
+  animation: flyer-pin-enter 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Textura de los pines -- sombra propia + hover. El color y la opacidad
+   siguen viniendo 100% del estilo inline en Map.jsx (makeIcon); esta clase
+   nunca los toca. */
+.flyer-pin {
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s ease-out;
+}
+
+.flyer-pin:hover {
+  transform: scale(1.18);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+
+/* Ícono de cluster (react-leaflet-cluster, iconCreateFunction en Map.jsx) --
+   mismo lenguaje visual que .flyer-pin (violeta de marca, borde blanco,
+   sombra) en vez de tirar del CSS default de leaflet.markercluster, que
+   rompe con el resto del sistema. */
+.flyer-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--flyer-violet);
+  border: 2px solid white;
+  color: white;
+  font-weight: 700;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.15s ease-out;
+}
+
+.flyer-cluster:hover {
+  transform: scale(1.1);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5), 0 2px 4px rgba(0, 0, 0, 0.55);
+}
+
+/* Slider de zoom -- reemplaza los botones +/- nativos de Leaflet. Un
+   <input type="range"> no tiene estilo cross-browser por defecto; se
+   redefine track y thumb para los dos prefijos (-webkit-/-moz-). */
+.flyer-zoom-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 16px;
+  cursor: pointer;
+}
+
+.flyer-zoom-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(124, 58, 237, 0.3);
+}
+
+.flyer-zoom-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 9999px;
+  background: var(--flyer-violet);
+  border: 2px solid var(--flyer-paper);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease-out;
+}
+
+.flyer-zoom-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.flyer-zoom-range::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(124, 58, 237, 0.3);
+}
+
+.flyer-zoom-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--flyer-violet);
+  border: 2px solid var(--flyer-paper);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+.flyer-zoom-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+.flyer-zoom-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyer-scanbar {
+    animation: none;
+    opacity: 0;
+  }
+  .flyer-cta-bloom {
+    animation: none;
+    box-shadow: 0 10px 26px -8px rgba(0, 0, 0, 0.55), 0 8px 26px 2px rgba(124, 58, 237, 0.4);
+  }
+  .flyer-halftone-live {
+    animation: none;
+  }
+  .flyer-radar-spin {
+    animation: none;
+  }
+  .flyer-pin {
+    transition: none;
+  }
+  .flyer-cluster {
+    transition: none;
+  }
+  .flyer-zoom-range::-webkit-slider-thumb {
+    transition: none;
+  }
+  .flyer-radar-ping::before {
+    animation: none;
+    display: none;
+  }
+  .flyer-pin-enter {
+    animation: none;
+    opacity: var(--pin-final-opacity, 1);
+  }
+}
+
+/* Extensión de "El Flyer Xerografiado" a Navbar y EventCard (ver DESIGN.md) */
+
+.flyer-navbar {
+  background: var(--flyer-ink);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.45);
+}
+
+.flyer-ghost-btn {
+  color: var(--flyer-paper);
+  background: transparent;
+  border: 1px solid rgba(124, 58, 237, 0.45);
+}
+
+.flyer-ghost-btn:hover {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: var(--flyer-violet);
+}
+
+.flyer-btn-solid {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+}
+
+.flyer-btn-solid:hover {
+  background: var(--flyer-violet-deep);
+}
+
+/* Botón de "Iniciar sesión" del Navbar -- pieza propia, separada de
+   flyer-btn-solid (que además usa FilterBar) para poder darle más
+   presencia sin infartar el tamaño de los filtros. */
+.flyer-navbar-cta {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+  box-shadow: 0 8px 20px -6px rgba(124, 58, 237, 0.55);
+  transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.flyer-navbar-cta:hover {
+  background: var(--flyer-violet-deep);
+  box-shadow: 0 10px 26px -6px rgba(124, 58, 237, 0.7);
+  transform: translateY(-1px);
+}
+
+.flyer-navbar-cta:active {
+  transform: translateY(0);
+}
+
+.flyer-text-muted {
+  color: rgba(245, 241, 230, 0.72);
+}
+
+.flyer-text-faint {
+  color: rgba(245, 241, 230, 0.52);
+}
+
+/* Píldoras/controles flotantes sobre el mapa (FilterBar, botón de
+   ubicación, pill de "Cargando...") -- mismo lenguaje oscuro, nunca
+   toca la logica ni el color de los pines (ver makeIcon/affinityColor). */
+.flyer-pill {
+  background: rgba(11, 11, 16, 0.92);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+.flyer-pill-text {
+  color: rgba(245, 241, 230, 0.7);
+}
+
+.flyer-pill-text:hover {
+  color: var(--flyer-paper);
+  background: rgba(124, 58, 237, 0.18);
+}
+
+.flyer-filter-text-active {
+  color: var(--flyer-paper);
+}
+
+.flyer-filter-thumb {
+  background: var(--flyer-violet);
+  transition: left 0.32s cubic-bezier(0.4, 0, 0.2, 1), width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyer-filter-thumb {
+    transition: none;
+  }
+}
+
+.flyer-icon-btn {
+  background: var(--flyer-ink);
+  color: var(--flyer-paper);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+.flyer-icon-btn:hover {
+  background: var(--flyer-violet-deep);
+}
+
+.flyer-badge {
+  background: var(--flyer-ink);
+  color: var(--flyer-paper);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+/* Tarjeta de evento -- talón cortado en la esquina superior derecha,
+   misma familia de corte que .flyer-cta (18px), a mayor escala. Fondo
+   claro (Papel) a pedido explícito del usuario tras ver la primera
+   version oscura -- ver DESIGN.md. */
+.flyer-card {
+  background: var(--flyer-paper);
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35);
+}
+
+.flyer-card-image {
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
+}
+
+.flyer-card-ink {
+  color: var(--flyer-ink);
+}
+
+.flyer-card-ink-muted {
+  color: rgba(11, 11, 16, 0.62);
+}
+
+.flyer-chip {
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  color: var(--flyer-violet-deep);
+}
+
+/* Genero que tambien esta entre las preferencias guardadas del usuario --
+   mismo violeta de marca que el resto del sistema, pero solido en vez del
+   tinte tenue de .flyer-chip, para que salte a la vista sin agregar un
+   color nuevo. */
+.flyer-chip-match {
+  background: var(--flyer-violet);
+  border: 1px solid var(--flyer-violet-deep);
+  color: var(--flyer-paper);
+}
+
+.flyer-warning {
+  color: #92400e;
+}
+
+/* Reemplazo de la foto del evento cuando el evento no tiene flyer_url --
+   mismo alto (h-28) que la imagen real, para que la tarjeta nunca cambie
+   de tamaño segun tenga foto o no (eso es lo que corria las flechas del
+   carrusel de lugar). */
+.flyer-card-placeholder {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.16), rgba(124, 58, 237, 0.05));
+  color: var(--flyer-violet-deep);
+}
+
+/* Chat -- ver ChatPanel.jsx. Mismo mundo oscuro que Navbar/FilterBar (es
+   chrome, no contenido de un evento; ver The Two-Ground Exception). */
+.flyer-chat-fab {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+  box-shadow: 0 8px 20px -6px rgba(124, 58, 237, 0.55);
+  transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+
+.flyer-chat-fab:hover {
+  background: var(--flyer-violet-deep);
+  box-shadow: 0 10px 26px -6px rgba(124, 58, 237, 0.7);
+  transform: translateY(-1px);
+}
+
+.flyer-chat-panel {
+  background: var(--flyer-ink);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+}
+
+/* Entrada compartida por el panel de chat y los modales -- ver ChatPanel,
+   GenreSurvey y AuthModal. */
+@keyframes flyer-pop-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.flyer-pop-enter {
+  animation: flyer-pop-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.flyer-chat-header {
+  border-bottom: 1px solid rgba(124, 58, 237, 0.35);
+}
+
+.flyer-chat-footer {
+  border-top: 1px solid rgba(124, 58, 237, 0.35);
+}
+
+.flyer-chat-bubble-user {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+}
+
+.flyer-chat-bubble-assistant {
+  background: rgba(124, 58, 237, 0.12);
+  color: var(--flyer-paper);
+}
+
+.flyer-chat-action {
+  background: rgba(124, 58, 237, 0.18);
+  color: var(--flyer-paper);
+}
+
+.flyer-chat-action:hover {
+  background: rgba(124, 58, 237, 0.28);
+}
+
+/* Campo de texto oscuro compartido -- input del chat y de AuthModal. */
+.flyer-field {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  color: var(--flyer-paper);
+}
+
+.flyer-field::placeholder {
+  color: rgba(245, 241, 230, 0.45);
+}
+
+.flyer-field:focus {
+  outline: none;
+  border-color: var(--flyer-violet);
+}
+
+.flyer-field:disabled {
+  opacity: 0.6;
+}
+
+.flyer-chat-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.flyer-chat-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.flyer-chat-scroll::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.35);
+  border-radius: 9999px;
+}
+
+@keyframes flyer-chat-typing {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.flyer-chat-typing-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--flyer-paper);
+  animation: flyer-chat-typing 1.1s ease-in-out infinite;
+}
+
+.flyer-chat-typing-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.flyer-chat-typing-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+/* Modales -- GenreSurvey y AuthModal. Mismo mundo oscuro que el resto de
+   la app chrome (chat, navbar, filtros); ver The Two-Ground Exception en
+   DESIGN.md -- estos no son contenido de un evento, son chrome. */
+.flyer-modal {
+  background: var(--flyer-ink);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+}
+
+.flyer-modal-border {
+  border-color: rgba(124, 58, 237, 0.35);
+}
+
+.flyer-toggle-chip {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(245, 241, 230, 0.72);
+}
+
+.flyer-toggle-chip:hover {
+  background: rgba(124, 58, 237, 0.18);
+  color: var(--flyer-paper);
+}
+
+.flyer-toggle-chip-active {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+}
+
+.flyer-toggle-chip-active:hover {
+  background: var(--flyer-violet-deep);
+}
+
+.flyer-banner-error {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+.flyer-banner-success {
+  background: rgba(34, 197, 94, 0.15);
+  color: #86efac;
+}
+
+.flyer-ghost-btn:focus-visible,
+.flyer-btn-solid:focus-visible,
+.flyer-navbar-cta:focus-visible,
+.flyer-icon-btn:focus-visible,
+.flyer-pill-text:focus-visible,
+.flyer-filter-text-active:focus-visible,
+.flyer-chat-fab:focus-visible,
+.flyer-chat-action:focus-visible,
+.flyer-toggle-chip:focus-visible,
+.flyer-toggle-chip-active:focus-visible,
+.flyer-field:focus-visible {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyer-pop-enter {
+    animation: none;
+  }
+  .flyer-chat-typing-dot {
+    animation: none;
+    opacity: 0.6;
+  }
+  .flyer-chat-fab {
+    transition: none;
+  }
+}

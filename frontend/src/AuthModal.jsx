@@ -101,22 +101,25 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-black/50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 relative">
+    <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="flyer-modal flyer-pop-enter rounded-2xl max-w-sm w-full p-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 text-xl leading-none"
+          className="absolute top-4 right-4 flyer-text-muted hover:opacity-100 text-xl leading-none transition-opacity"
+          style={{ color: "var(--flyer-paper)", opacity: 0.55 }}
         >
           ×
         </button>
 
-        <h2 className="font-semibold text-lg text-slate-800 mb-4">{titles[mode]}</h2>
+        <h2 className="flyer-sans font-bold text-lg mb-4" style={{ color: "var(--flyer-paper)" }}>
+          {titles[mode]}
+        </h2>
 
         {error && (
-          <div className="mb-3 text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>
+          <div className="flyer-sans flyer-banner-error mb-3 text-sm rounded-lg px-3 py-2">{error}</div>
         )}
         {successMessage && (
-          <div className="mb-3 text-sm text-green-700 bg-green-50 rounded-lg px-3 py-2">
+          <div className="flyer-sans flyer-banner-success mb-3 text-sm rounded-lg px-3 py-2">
             {successMessage}
           </div>
         )}
@@ -129,7 +132,7 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-violet-500"
+              className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors"
             />
             <input
               type="password"
@@ -137,20 +140,25 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-violet-500"
+              className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors"
             />
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium py-2 rounded-lg disabled:bg-slate-300 transition-colors"
+              className="flyer-btn-solid flyer-sans w-full text-sm font-semibold py-2 rounded-lg disabled:opacity-40 transition-colors"
             >
               {loading ? "Entrando..." : "Iniciar sesión"}
             </button>
             <div className="flex justify-between text-xs">
-              <button type="button" onClick={() => switchMode("forgot")} className="text-violet-600 hover:underline">
+              <button
+                type="button"
+                onClick={() => switchMode("forgot")}
+                className="flyer-sans hover:underline"
+                style={{ color: "var(--flyer-violet)" }}
+              >
                 ¿Olvidaste tu contraseña?
               </button>
-              <button type="button" onClick={() => switchMode("register")} className="text-slate-500 hover:underline">
+              <button type="button" onClick={() => switchMode("register")} className="flyer-sans flyer-text-muted hover:underline">
                 Crear cuenta
               </button>
             </div>
@@ -164,7 +172,7 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
               placeholder="Nombre (opcional)"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-violet-500"
+              className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors"
             />
             <input
               type="email"
@@ -172,7 +180,7 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-violet-500"
+              className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors"
             />
             <input
               type="password"
@@ -180,17 +188,17 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-violet-500"
+              className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors"
             />
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium py-2 rounded-lg disabled:bg-slate-300 transition-colors"
+              className="flyer-btn-solid flyer-sans w-full text-sm font-semibold py-2 rounded-lg disabled:opacity-40 transition-colors"
             >
               {loading ? "Creando..." : "Crear cuenta"}
             </button>
             <div className="text-center text-xs">
-              <button type="button" onClick={() => switchMode("login")} className="text-slate-500 hover:underline">
+              <button type="button" onClick={() => switchMode("login")} className="flyer-sans flyer-text-muted hover:underline">
                 Ya tengo cuenta
               </button>
             </div>
@@ -205,17 +213,17 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:border-violet-500"
+              className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors"
             />
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium py-2 rounded-lg disabled:bg-slate-300 transition-colors"
+              className="flyer-btn-solid flyer-sans w-full text-sm font-semibold py-2 rounded-lg disabled:opacity-40 transition-colors"
             >
               {loading ? "Enviando..." : "Enviar instrucciones"}
             </button>
             <div className="text-center text-xs">
-              <button type="button" onClick={() => switchMode("login")} className="text-slate-500 hover:underline">
+              <button type="button" onClick={() => switchMode("login")} className="flyer-sans flyer-text-muted hover:underline">
                 Volver a iniciar sesión
               </button>
             </div>
@@ -223,14 +231,14 @@ export default function AuthModal({ onClose, onLoginSuccess }) {
         )}
 
         <div className="flex items-center gap-3 my-4">
-          <div className="flex-1 h-px bg-slate-200" />
-          <span className="text-xs text-slate-400">o</span>
-          <div className="flex-1 h-px bg-slate-200" />
+          <div className="flex-1 h-px" style={{ background: "rgba(124, 58, 237, 0.25)" }} />
+          <span className="flyer-sans flyer-text-faint text-xs">o</span>
+          <div className="flex-1 h-px" style={{ background: "rgba(124, 58, 237, 0.25)" }} />
         </div>
 
         <button
           onClick={handleGoogleLogin}
-          className="w-full border border-slate-300 hover:bg-slate-50 text-slate-700 text-sm font-medium py-2 rounded-lg transition-colors"
+          className="flyer-ghost-btn flyer-sans w-full text-sm font-semibold py-2 rounded-lg transition-colors"
         >
           Continuar con Google
         </button>

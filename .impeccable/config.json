@@ -1,0 +1,18 @@
+{
+  "buildPath": "comp",
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "layout-transition",
+        "value": "*",
+        "files": [
+          "frontend/src/index.css"
+        ],
+        "createdAt": "2026-09-20T04:32:29.247Z",
+        "reason": "FilterBar's sliding active-filter thumb is a single small position:absolute decorative element (not in normal document flow), so animating its width/left cannot cascade into a page-wide reflow -- the practical cost is negligible. A transform-only (scaleX) rewrite was tried and rejected: scaling a rounded-full pill horizontally distorts its end-caps into ellipses instead of semicircles, a worse visual defect than the theoretical layout cost here."
+      }
+    ]
+  }
+}

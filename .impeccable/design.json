@@ -1,0 +1,213 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-19T00:00:00Z",
+  "title": "Design System: Rave Radar AR",
+  "extensions": {
+    "colorMeta": {
+      "violet-electric": {
+        "role": "primary",
+        "displayName": "Violeta Eléctrico",
+        "canonical": "#7C3AED",
+        "tonalRamp": ["#2e1065", "#4c1d95", "#5b21b6", "#6d28d9", "#7c3aed", "#a78bfa", "#c4b5fd", "#ede9fe", "#f5f3ff"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Tinta",
+        "canonical": "#1E293B",
+        "tonalRamp": ["#0f172a", "#1e293b", "#334155", "#475569", "#64748b", "#94a3b8", "#cbd5e1", "#e2e8f0", "#f1f5f9", "#f8fafc"]
+      },
+      "affinity-strong": {
+        "role": "semantic-success",
+        "displayName": "Afinidad Fuerte",
+        "canonical": "#16A34A",
+        "tonalRamp": ["#14532d", "#15803d", "#16a34a", "#22c55e", "#4ade80", "#86efac", "#bbf7d0", "#dcfce7", "#f0fdf4"]
+      },
+      "affinity-none": {
+        "role": "semantic-neutral-warning",
+        "displayName": "Sin Afinidad",
+        "canonical": "#FB923C",
+        "tonalRamp": ["#7c2d12", "#c2410c", "#ea580c", "#f97316", "#fb923c", "#fdba74", "#fed7aa", "#ffedd5", "#fff7ed"]
+      },
+      "location-signal": {
+        "role": "semantic-info",
+        "displayName": "Señal de Ubicación",
+        "canonical": "#3B82F6",
+        "tonalRamp": ["#1e3a8a", "#1d4ed8", "#2563eb", "#3b82f6", "#60a5fa", "#93c5fd", "#bfdbfe", "#dbeafe", "#eff6ff"]
+      },
+      "error-text": {
+        "role": "semantic-error",
+        "displayName": "Error",
+        "canonical": "#DC2626",
+        "tonalRamp": ["#7f1d1d", "#b91c1c", "#dc2626", "#ef4444", "#f87171", "#fca5a5", "#fecaca", "#fee2e2", "#fef2f2"]
+      },
+      "precision-warning": {
+        "role": "semantic-warning",
+        "displayName": "Alerta de Precisión",
+        "canonical": "#D97706",
+        "tonalRamp": ["#78350f", "#b45309", "#d97706", "#f59e0b", "#fbbf24", "#fcd34d", "#fde68a", "#fef3c7", "#fffbeb"]
+      },
+      "flyer-ground": {
+        "role": "scoped-neutral",
+        "displayName": "Tóner Nocturno",
+        "canonical": "#0B0B10",
+        "scope": "LandingPage only — El Flyer Xerografiado",
+        "tonalRamp": ["#000000", "#0b0b10", "#16161f", "#232331", "#34344a", "#4a4a68", "#6b6b8f", "#9a9ab8", "#d0d0e0"]
+      },
+      "flyer-paper": {
+        "role": "scoped-neutral",
+        "displayName": "Papel",
+        "canonical": "#F5F1E6",
+        "scope": "LandingPage only — El Flyer Xerografiado",
+        "tonalRamp": ["#3a3629", "#5c5643", "#847c60", "#a89f80", "#c7bfa4", "#dcd6c3", "#ece7da", "#f5f1e6", "#faf8f2"]
+      },
+      "flyer-pink": {
+        "role": "scoped-secondary",
+        "displayName": "Rosa Flúo",
+        "canonical": "#FF3D81",
+        "scope": "LandingPage only — reserved exclusively for the title's ¡ ! glyphs and the CTA's focus-visible ring, never decorative elsewhere",
+        "tonalRamp": ["#5c0a29", "#8f0f40", "#c21657", "#f02970", "#ff3d81", "#ff70a1", "#ff9fc0", "#ffcfe0", "#fff0f6"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Único uso: título de la landing de bienvenida. NOTA: este entry documenta el stack de sistema histórico; LandingPage en el build actual usa `flyer-display` (Anton), no este token — ver typographyMeta.flyer-display." },
+      "title": { "displayName": "Title", "purpose": "Encabezados de modal y del panel de chat." },
+      "body": { "displayName": "Body", "purpose": "Tamaño por defecto de casi toda la interfaz: mensajes, botones, inputs." },
+      "label": { "displayName": "Label", "purpose": "Metadatos, timestamps, badges de precisión, contador de selección." },
+      "flyer-display": {
+        "displayName": "Flyer Display (Anton)",
+        "purpose": "The poster-cut title on LandingPage, plus the Navbar wordmark at text-xl — the only two places Anton appears. User-confirmed: 'linda esa tipografía pero solo para eso'.",
+        "scope": "LandingPage + Navbar wordmark only — El Flyer Xerografiado"
+      },
+      "flyer-mono": {
+        "displayName": "Flyer Mono (Courier Prime)",
+        "purpose": "LandingPage only — tagline (400, uppercase tracked) and CTA label/microcopy (700 label, 400 sub-label). Self-hosted woff2, weights 400/700.",
+        "scope": "LandingPage only — El Flyer Xerografiado"
+      },
+      "flyer-sans": {
+        "displayName": "Flyer Sans (Archivo)",
+        "purpose": "UI workhorse face for the rest of the flyer world: Navbar auth actions, FilterBar, loading pill, carousel badge, and all of EventCard (name, venue, date, chips, CTA). Added after real user feedback rejecting Courier Prime outside LandingPage. Self-hosted woff2, weights 400/600/700.",
+        "scope": "Navbar (except wordmark) + map chrome + EventCard — El Flyer Xerografiado"
+      }
+    },
+    "shadows": [
+      { "name": "floating-standard", "value": "0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1)", "purpose": "Controles flotantes sobre el mapa: barra de filtros, botón de ubicación, burbuja de apertura del chat." },
+      { "name": "floating-prominent", "value": "0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1)", "purpose": "Modales y tarjeta de evento." },
+      { "name": "floating-max", "value": "0 25px 50px -12px rgb(0 0 0 / 0.25)", "purpose": "Panel de chat abierto y overlay de detalle/carrusel." },
+      { "name": "flyer-cta-bloom-settled", "value": "0 10px 26px -8px rgba(0, 0, 0, 0.55), 0 8px 26px 2px rgba(124, 58, 237, 0.4)", "purpose": "LandingPage only — end-state glow under the flyer CTA after its bloom animation settles (or immediately, under prefers-reduced-motion)." }
+    ],
+    "motion": [
+      { "name": "flyer-scan", "value": "flyer-scan 1.1s cubic-bezier(0.16, 1, 0.3, 1) both", "purpose": "LandingPage only — one-shot photocopier-sweep entrance revealing content top to bottom. Disabled under prefers-reduced-motion." },
+      { "name": "flyer-bloom", "value": "flyer-bloom 1.1s cubic-bezier(0.16, 1, 0.3, 1) 0.5s both", "purpose": "LandingPage only — CTA glow-settle entrance. Disabled under prefers-reduced-motion in favor of the settled end-state shadow." },
+      { "name": "flyer-flicker", "value": "flyer-flicker 1.1s ease-out 1", "purpose": "LandingPage only — subtle halftone shimmer on load. Disabled under prefers-reduced-motion." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Acción principal — píldora violeta sólida (ej. guardar preferencias). Scope: ChatPanel/GenreSurvey/AuthModal only — Navbar, EventCard and map chrome moved to the flyer-* components below.",
+      "html": "<button class=\"ds-btn-primary\">Comprar entrada</button>",
+      "css": ".ds-btn-primary { background: #7C3AED; color: #FFFFFF; padding: 8px 16px; border: none; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; transition: background-color 0.2s; } .ds-btn-primary:hover { background: #6D28D9; } .ds-btn-primary:focus-visible { outline: 2px solid #8B5CF6; outline-offset: 2px; } .ds-btn-primary:disabled { background: #CBD5E1; cursor: not-allowed; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Acción secundaria — outline violeta sobre fondo transparente, usada para 'Continuar con Google' y acciones no destructivas de menor jerarquía en AuthModal. Scope: ChatPanel/GenreSurvey/AuthModal only — Navbar's own ghost buttons (Preferencias/Salir) moved to flyer-ghost-btn below.",
+      "html": "<button class=\"ds-btn-secondary\">Continuar con Google</button>",
+      "css": ".ds-btn-secondary { background: transparent; color: #7C3AED; padding: 6px 16px; border: 1px solid #DDD6FE; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; cursor: pointer; transition: color 0.2s, border-color 0.2s; } .ds-btn-secondary:hover { color: #6D28D9; border-color: #7C3AED; } .ds-btn-secondary:focus-visible { outline: 2px solid #8B5CF6; outline-offset: 2px; }"
+    },
+    {
+      "name": "Genre Chip",
+      "kind": "chip",
+      "refersTo": "chip-active",
+      "description": "Toggle binario de género musical, usado en la encuesta de preferencias — activo (violeta) vs inactivo (slate). Scope: GenreSurvey only (unchanged) — not to be confused with EventCard's dark flyer-chip below.",
+      "html": "<div class=\"ds-chip-row\"><button class=\"ds-chip ds-chip-active\">Techno</button><button class=\"ds-chip ds-chip-inactive\">House</button></div>",
+      "css": ".ds-chip-row { display: flex; gap: 8px; flex-wrap: wrap; } .ds-chip { padding: 6px 12px; border-radius: 9999px; font-size: 0.875rem; font-weight: 500; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; border: none; cursor: pointer; transition: background-color 0.2s, color 0.2s; } .ds-chip-active { background: #7C3AED; color: #FFFFFF; } .ds-chip-inactive { background: #F1F5F9; color: #64748B; } .ds-chip-inactive:hover { background: #E2E8F0; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Campo de formulario estándar (login, registro, chat) — borde fino, foco violeta, sin ring. Scope: ChatPanel/AuthModal only (unchanged).",
+      "html": "<input class=\"ds-input\" type=\"email\" placeholder=\"Email\" />",
+      "css": ".ds-input { width: 100%; padding: 8px 12px; border: 1px solid #CBD5E1; border-radius: 0.5rem; font-size: 0.875rem; font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; color: #1E293B; background: #FFFFFF; box-sizing: border-box; } .ds-input:focus { outline: none; border-color: #8B5CF6; } .ds-input::placeholder { color: #94A3B8; }"
+    },
+    {
+      "name": "Event Card",
+      "kind": "card",
+      "refersTo": "flyer-card",
+      "description": "Componente firma — la tarjeta compacta que aparece al clickear un pin o navegar el carrusel del chat: flyer, nombre, venue, fecha, géneros y CTA de compra. Scope: flyer world. Talón cortado en la esquina superior derecha (24px), fondo Papel (claro — la única superficie clara de este mundo, ver The Two-Ground Exception), tipografía Archivo. Rediseñada tras feedback real: la primera versión (oscura, Courier Prime) no gustó; el usuario pidió fondo claro, nombre más grande, y explícitamente 'insistió' en la tipografía.",
+      "html": "<div class=\"ds-event-card\"><img class=\"ds-event-card-img\" src=\"https://placehold.co/256x112\" alt=\"\" /><p class=\"ds-event-card-name\">Sunset Session | Bahía Sound</p><p class=\"ds-event-card-venue\">Crobar</p><p class=\"ds-event-card-date\">Viernes 26/09</p><div class=\"ds-event-card-genres\"><span class=\"ds-event-card-genre\">Techno</span><span class=\"ds-event-card-genre\">Melodic</span></div><a class=\"ds-event-card-cta\" href=\"#\">Comprar entrada</a></div>",
+      "css": ".ds-event-card { width: 256px; background: #F5F1E6; clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%); box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35); padding: 12px; font-family: 'Archivo', system-ui, sans-serif; } .ds-event-card-img { width: 100%; height: 112px; object-fit: cover; clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%); margin-bottom: 8px; } .ds-event-card-name { font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; font-size: 1rem; color: #0B0B10; line-height: 1.3; margin: 0; } .ds-event-card-venue { font-size: 0.875rem; color: rgba(11,11,16,0.62); margin: 4px 0 0; } .ds-event-card-date { font-size: 0.75rem; color: rgba(11,11,16,0.62); margin: 4px 0 0; text-transform: capitalize; } .ds-event-card-genres { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; } .ds-event-card-genre { font-size: 0.625rem; padding: 2px 8px; background: rgba(124,58,237,0.12); border: 1px solid rgba(124,58,237,0.4); color: #6D28D9; border-radius: 9999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; } .ds-event-card-cta { display: block; margin-top: 12px; text-align: center; background: #7C3AED; color: #F5F1E6; font-size: 0.875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; padding: 10px; border: none; clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); text-decoration: none; transition: background-color 0.2s; } .ds-event-card-cta:hover { background: #6D28D9; }"
+    },
+    {
+      "name": "Navbar",
+      "kind": "nav",
+      "refersTo": "flyer-navbar",
+      "description": "Barra superior persistente de toda la app. Scope: flyer world. Fondo Tóner Nocturno, borde inferior violeta al 45%, wordmark en Anton (única excepción Anton fuera de LandingPage), CTA violeta con sombra real + hover lift (flyer-navbar-cta, rediseñado a pedido del usuario: 'más lindo'), o avatar + botones ghost Archivo si hay sesión.",
+      "html": "<header class=\"ds-navbar\"><h1 class=\"ds-navbar-title\">Rave Radar AR</h1><button class=\"ds-navbar-cta\">Iniciar sesión</button></header>",
+      "css": ".ds-navbar { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; height: 56px; background: #0B0B10; border-bottom: 1px solid rgba(124,58,237,0.45); } .ds-navbar-title { font-family: 'Anton', system-ui, sans-serif; text-transform: uppercase; letter-spacing: -0.02em; font-size: 1.25rem; color: #F5F1E6; margin: 0; } .ds-navbar-cta { font-family: 'Archivo', system-ui, sans-serif; font-weight: 700; font-size: 0.875rem; color: #F5F1E6; background: #7C3AED; border: none; border-radius: 9999px; padding: 10px 24px; cursor: pointer; box-shadow: 0 8px 20px -6px rgba(124,58,237,0.55); transition: background-color 0.2s, box-shadow 0.2s, transform 0.2s; } .ds-navbar-cta:hover { background: #6D28D9; box-shadow: 0 10px 26px -6px rgba(124,58,237,0.7); transform: translateY(-1px); }"
+    },
+    {
+      "name": "Map Marker",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Componente firma — círculo (no pin/gota) que codifica afinidad de género por color y precisión de ubicación por opacidad. Scope: everywhere except LandingPage.",
+      "html": "<div class=\"ds-marker-row\"><div class=\"ds-marker ds-marker-strong\"></div><div class=\"ds-marker ds-marker-mild\"></div><div class=\"ds-marker ds-marker-none\"></div><div class=\"ds-marker-city\"></div></div>",
+      "css": ".ds-marker-row { display: flex; gap: 16px; align-items: center; } .ds-marker { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #FFFFFF; box-shadow: 0 1px 4px rgba(0,0,0,0.35); } .ds-marker-strong { background: #16A34A; } .ds-marker-mild { background: #86EFAC; } .ds-marker-none { background: #FB923C; } .ds-marker-city { width: 16px; height: 16px; border-radius: 50%; border: 2px solid #FFFFFF; background: #7C3AED; opacity: 0.25; box-shadow: 0 1px 4px rgba(0,0,0,0.35); }"
+    },
+    {
+      "name": "Flyer CTA",
+      "kind": "button",
+      "refersTo": "flyer-cta",
+      "description": "Signature CTA of the flyer world — diagonal 18px corner-notch (clip-path), violet fill, Courier Prime bold label, pink focus-visible ring. Used by LandingPage's entry button (with microcopy sub-line + bloom entrance) and EventCard's 'Comprar entrada' (no sub-line, no bloom). Deliberately NOT used by compact utility buttons (Navbar, FilterBar) — see flyer-btn-solid.",
+      "html": "<button class=\"ds-flyer-cta\">Encontrá tu fiesta<span class=\"ds-flyer-cta-sub\">Esta noche · Argentina</span></button>",
+      "css": ".ds-flyer-cta { background: #7C3AED; color: #F5F1E6; font-family: 'Courier Prime', ui-monospace, monospace; font-weight: 700; font-size: 1rem; text-transform: uppercase; letter-spacing: 0.06em; padding: 16px 40px; border: none; cursor: pointer; clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); transition: background-color 0.2s; } .ds-flyer-cta:hover { background: #6D28D9; } .ds-flyer-cta:active { transform: scale(0.97) translateY(1px); } .ds-flyer-cta:focus-visible { outline: 2px solid #FF3D81; outline-offset: 4px; } .ds-flyer-cta-sub { display: block; margin-top: 4px; font-weight: 400; font-size: 10px; text-transform: none; letter-spacing: normal; opacity: 0.9; }"
+    },
+    {
+      "name": "Flyer Background System",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "LandingPage only — signature layered background: blurred/grayscaled duotoned map, diagonal ink wedge, load-bearing content scrim, halftone grain. Scope: LandingPage only; the content-scrim layer is the real WCAG-contrast guarantee for all text on this surface and must not be removed independently of the layers below it.",
+      "html": "<div class=\"ds-flyer-bg\"><div class=\"ds-flyer-bg-duotone\"></div><div class=\"ds-flyer-bg-wedge\"></div><div class=\"ds-flyer-bg-scrim\"></div><div class=\"ds-flyer-bg-halftone\"></div></div>",
+      "css": ".ds-flyer-bg { position: relative; inset: 0; background: #0B0B10; } .ds-flyer-bg-duotone { position: absolute; inset: 0; background: linear-gradient(155deg, #0b0b10 5%, #7c3aed 140%); mix-blend-mode: multiply; } .ds-flyer-bg-wedge { position: absolute; inset: 0; background: #0b0b10; opacity: 0.62; clip-path: polygon(0 0, 38% 0, 62% 100%, 0 100%); } .ds-flyer-bg-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(11,11,16,0.15) 0%, rgba(11,11,16,0.62) 20%, rgba(11,11,16,0.62) 80%, rgba(11,11,16,0.15) 100%); } .ds-flyer-bg-halftone { position: absolute; inset: 0; background-image: radial-gradient(circle, rgba(245,241,230,0.5) 0.8px, transparent 1.1px); background-size: 4px 4px; mix-blend-mode: overlay; opacity: 0.35; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El Mapa de Confianza",
+    "overview": "Rave Radar AR se lee hoy como Google Maps para la noche electrónica: utilitario, familiar, sin fricción. La marca vive en un único acento violeta y en detalles funcionales (opacidad de precisión, color de afinidad), no en gestos visuales grandes. El mapa ocupa toda la pantalla; la interfaz flota encima en paneles blancos redondeados, nunca compite con él.\n\nEsto es un estado confirmado como provisorio, no una identidad de marca ya decidida. La paleta (violeta + slate + blanco), la tipografía (stack de sistema, sin fuente propia) y la ausencia de dark mode son en gran parte los valores por defecto del scaffold Vite + Tailwind v4, no el resultado de una exploración de identidad deliberada. Documentar esto sirve para que trabajo futuro construya sobre lo que hay sin inventar reglas de marca que nadie tomó todavía — y para que una futura pasada de identidad (/impeccable colorize, /impeccable typeset, o un new-work de rediseño) tenga un punto de partida claro en vez de una hoja en blanco.\n\nLa única excepción confirmada a este estado provisorio es LandingPage, que sí pasó por una exploración de identidad deliberada y comprometida — ver el mundo escopado 'El Flyer Xerografiado' documentado por separado en DESIGN.md. Es una excepción de alcance, no una promoción de este mood a decisión de marca cerrada.",
+    "keyCharacteristics": [
+      "Un solo acento de marca (violeta) sobre blanco/slate neutro — sin secundario ni terciario todavía.",
+      "Shell map-first a pantalla completa: no hay scroll de página, la UI flota en capas por z-index sobre el mapa.",
+      "Componentes redondeados y de baja decoración; la jerarquía la dan el borde y la sombra suave, no el color.",
+      "Sin dark mode, sin tipografía custom — stack sans del sistema operativo en todas partes (excepto LandingPage, ver mundo escopado).",
+      "Confirmado como provisorio: es un punto de partida funcional, no todavía una decisión de identidad."
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "El violeta es el único color de marca en toda la interfaz. Todo lo demás es neutro, o pertenece al lenguaje semántico de afinidad del mapa — que nunca se usa como acento decorativo fuera del mapa. Scoped exception: the flyer world (LandingPage, Navbar, map chrome, EventCard) adds one additional spot color (Rosa Flúo #FF3D81) under its own tightly-scoped rule — see The Reserved Second Ink Rule. ChatPanel/GenreSurvey/AuthModal stay single-accent.", "section": "colors" },
+      { "name": "The System Stack Rule", "body": "Ninguna fuente propia está cargada; todo texto resuelve al stack sans por defecto del sistema operativo. Tratar esto como una decisión sin tomar todavía, no como una elección minimalista deliberada. Scoped exception: the flyer world self-hosts Anton and Courier Prime; ChatPanel/GenreSurvey/AuthModal still have none.", "section": "typography" },
+      { "name": "The No Sharp Corners Rule", "body": "Todo elemento interactivo o contenedor redondea como mínimo a rounded-lg (8px); nada en la interfaz tiene una esquina recta de 90°. Scoped exception: the flyer-cta button (landing CTA, EventCard's buy button) and the EventCard shell itself use a diagonal corner-notch (clip-path, 18px/24px) — the only two components with this exception. Everything else in the flyer world (Navbar, FilterBar, icon buttons, chips) stays rounded-full.", "section": "shapes" },
+      { "name": "The Reserved Second Ink Rule", "body": "Rosa Flúo (#FF3D81) has exactly two jobs: the landing title's exclamation glyphs (decorative, LandingPage only), and the :focus-visible ring color across every interactive element in the whole flyer world (functional, not decorative). A scoped, deliberate exception to the global One Accent Rule.", "section": "scoped-landing-colors" },
+      { "name": "The Self-Hosted-Only Rule", "body": "Anton and Courier Prime are shipped as local woff2 files in frontend/src/assets/fonts/, never a CDN link — a real fix made during finish review. Scoped to the flyer world (LandingPage, Navbar, map chrome, EventCard); ChatPanel/GenreSurvey/AuthModal still load no custom font.", "section": "scoped-landing-typography" }
+    ],
+    "dos": [
+      "Do mantener el violeta (#7C3AED) como único color de marca; reservar la escala verde/naranja de afinidad exclusivamente para personalización en el mapa, nunca como acento decorativo en otro lado.",
+      "Do redondear todo elemento interactivo como mínimo a rounded-lg (8px) — nada en esta interfaz tiene esquina recta, salvo el CTA de LandingPage (ver excepción escopada).",
+      "Do comunicar precisión de ubicación de un pin por opacidad, nunca por color — el color está reservado para afinidad.",
+      "Do mantener el mapa a pantalla completa detrás de la UI flotante; es un shell map-first, no una página con un mapa incrustado.",
+      "Do keep Rosa Flúo (#FF3D81) confined to the title's ¡ ! glyphs and the CTA's focus ring on LandingPage — nowhere else on that surface, and nowhere on any other surface.",
+      "Do self-host Anton and Courier Prime from frontend/src/assets/fonts/ for LandingPage; never load them from a CDN.",
+      "Do treat LandingPage's .flyer-content-scrim as load-bearing for text contrast — do not remove or weaken it independently of the duotone/map layers underneath."
+    ],
+    "donts": [
+      "Don't introducir un segundo color de marca decorativo sin pasar por una exploración de identidad deliberada — el sistema de un solo acento es una decisión confirmada, no un olvido. (LandingPage's pink spot already went through that exploration and is scoped; it is not license to add more color elsewhere.)",
+      "Don't dejar que Rave Radar AR se lea como una app de ticketera (Passline/Eventbrite/Resident Advisor) — anti-referencia confirmada; mantener el encuadre de mapa + conversación, no un listado/grid de eventos.",
+      "Don't tratar el mood actual (blanco/slate/violeta único, tipografía de sistema) como una identidad de marca ya cerrada — está confirmado como estado provisorio; se espera una pasada de identidad futura que revise color, tipografía y potencialmente elevación.",
+      "Don't apply any flyer-* token, the Anton/Courier Prime fonts, the corner-notch shape, the pink spot color, or the dark ground color (#0B0B10) from LandingPage's scoped world to any component outside LandingPage.",
+      "Don't treat LandingPage's CTA corner-notch as precedent for retiring the app-wide No Sharp Corners Rule elsewhere — it is a single named exception, not a repeal.",
+      "Don't treat LandingPage's dark-only stance as evidence the rest of the app should get a dark mode — the global system's no-dark-mode default is untouched outside LandingPage."
+    ]
+  }
+}

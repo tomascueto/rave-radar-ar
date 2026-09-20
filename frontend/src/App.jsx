@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import Map, { getDateRange } from "./Map";
+import { MapContainer, TileLayer } from "react-leaflet";
+import "leaflet/dist/leaflet.css";
+import Map, { getDateRange, TILE_URL, TILE_ATTRIBUTION } from "./Map";
 import ChatPanel from "./ChatPanel";
 import Navbar from "./Navbar";
 import GenreSurvey from "./GenreSurvey";
@@ -17,16 +19,65 @@ function buildMapApiUrl(filterKey) {
   return `${API_BASE}/api/events/map${query ? `?${query}` : ""}`;
 }
 
+// Centro propio (Palermo) para el mapa decorativo de la landing -- lejos del
+// Río de la Plata, que como fill claro y uniforme sobrevivía al blur/duotono
+// como una franja brillante encima de la trama de calles. Solo cambia el
+// encuadre: el proveedor de tiles sigue siendo el mismo TILE_URL de Map.jsx.
+const LANDING_MAP_CENTER = [-34.5951, -58.4436];
+
 function LandingPage({ onEnter }) {
   return (
-    <div className="fixed inset-0 z-[3000] bg-white flex flex-col items-center justify-center gap-6">
-      <h1 className="text-4xl font-bold text-slate-900">Bienvenido a Rave Radar AR</h1>
-      <button
-        onClick={onEnter}
-        className="bg-violet-600 hover:bg-violet-700 text-white text-lg font-medium px-8 py-3 rounded-full transition-colors"
-      >
-        Encontrá tu fiesta
-      </button>
+    <div className="fixed inset-0 z-[3000] flyer-landing overflow-hidden flex items-center justify-center">
+      <div className="absolute inset-0 flyer-map pointer-events-none">
+        <MapContainer
+          center={LANDING_MAP_CENTER}
+          zoom={16}
+          zoomControl={false}
+          dragging={false}
+          scrollWheelZoom={false}
+          doubleClickZoom={false}
+          touchZoom={false}
+          boxZoom={false}
+          keyboard={false}
+          className="h-full w-full flyer-map-layer"
+        >
+          <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+        </MapContainer>
+      </div>
+
+      <div className="absolute inset-0 flyer-duotone" aria-hidden="true" />
+      <div className="absolute inset-0 flyer-diagonal-cut" aria-hidden="true" />
+      <div className="absolute inset-0 flyer-scrim" aria-hidden="true" />
+      <div className="absolute inset-0 flyer-content-scrim" aria-hidden="true" />
+      <div className="absolute inset-0 flyer-halftone flyer-halftone-live" aria-hidden="true" />
+      <div className="flyer-scanbar pointer-events-none" aria-hidden="true" />
+
+      <div className="relative z-10 flex flex-col items-center gap-5 px-6 max-w-md text-center">
+        <h1
+          className="flyer-title uppercase leading-[0.92]"
+          style={{ fontSize: "clamp(2.75rem, 9vw, 6rem)", textWrap: "balance" }}
+        >
+          <span style={{ color: "var(--flyer-pink)" }}>¡</span>
+          Bienvenido a Rave Radar AR
+          <span style={{ color: "var(--flyer-pink)" }}>!</span>
+        </h1>
+
+        <div className="flyer-rule w-24" />
+
+        <p className="flyer-mono flyer-tagline uppercase tracking-[0.08em] text-sm">
+          Mapa en vivo + recomendación por IA
+        </p>
+
+        <button
+          onClick={onEnter}
+          className="flyer-cta flyer-cta-bloom mt-2 flyer-mono uppercase tracking-[0.06em] font-bold text-base px-10 py-4 transition-colors"
+        >
+          Encontrá tu fiesta
+          <span className="block flyer-mono normal-case tracking-normal text-[10px] font-normal opacity-90 mt-1">
+            Esta noche · Argentina
+          </span>
+        </button>
+      </div>
     </div>
   );
 }
@@ -78,6 +129,7 @@ function App() {
     const tokenFromUrl = params.get("access_token");
     if (tokenFromUrl) {
       setAccessToken(tokenFromUrl);
+      setHasEntered(true);
       window.history.replaceState({}, "", "/");
       return;
     }
