@@ -546,6 +546,45 @@
   color: #92400e;
 }
 
+/* Boton de "sacar de guardados" -- vive DENTRO de .flyer-card (fondo
+   claro, la unica excepcion del sistema oscuro), asi que usa su propio
+   rojo suave en vez de reusar .flyer-btn-danger/.flyer-banner-error
+   (pensados para el fondo oscuro del resto de la app). */
+.flyer-card-btn-danger {
+  background: rgba(220, 38, 38, 0.08);
+  border: 1px solid rgba(220, 38, 38, 0.32);
+  color: #b91c1c;
+}
+
+.flyer-card-btn-danger:hover {
+  background: rgba(220, 38, 38, 0.16);
+}
+
+/* Corazon de "guardar evento" -- flota SOBRE la foto del evento (fondo
+   variable, foto de cualquier flyer real), asi que necesita su propio
+   fondo oscuro solido como .flyer-icon-btn en vez de heredar el claro de
+   .flyer-card. Relleno rosa cuando el evento ya esta guardado. */
+.flyer-heart-btn {
+  background: var(--flyer-ink);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  color: var(--flyer-paper);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+.flyer-heart-btn:hover:not(:disabled) {
+  background: var(--flyer-violet-deep);
+}
+
+.flyer-heart-btn.is-saved {
+  color: var(--flyer-pink);
+  border-color: var(--flyer-pink);
+}
+
+.flyer-heart-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Reemplazo de la foto del evento cuando el evento no tiene flyer_url --
    mismo alto (h-28) que la imagen real, para que la tarjeta nunca cambie
    de tamaño segun tenga foto o no (eso es lo que corria las flechas del

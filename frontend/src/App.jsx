@@ -6,6 +6,7 @@ import ChatPanel from "./ChatPanel";
 import Navbar from "./Navbar";
 import GenreSurvey from "./GenreSurvey";
 import AuthModal from "./AuthModal";
+import UserPanel from "./UserPanel";
 import ResetPasswordPage from "./ResetPasswordPage";
 
 const API_BASE = "http://localhost:8000";
@@ -85,7 +86,9 @@ function LandingPage({ onEnter }) {
 function App() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hasEntered, setHasEntered] = useState(false);
+  const [hasEntered, setHasEntered] = useState(
+    () => localStorage.getItem("hasEntered") === "true"
+  );
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("todos");
 
@@ -96,9 +99,22 @@ function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [showSurvey, setShowSurvey] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showUserPanel, setShowUserPanel] = useState(false);
+  const [userPanelInitialTab, setUserPanelInitialTab] = useState("perfil");
+  const [googleLinkError, setGoogleLinkError] = useState(null);
+  const [googleLinkSuccess, setGoogleLinkSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
   const [genreWeights, setGenreWeights] = useState({});
+  // null = sin sesion (el corazon de guardar ni se habilita) -- distinto
+  // de un Set vacio, que es "logueado pero sin nada guardado todavia".
+  const [savedEventIds, setSavedEventIds] = useState(null);
+
+
+  function handleEnter() {
+    localStorage.setItem("hasEntered", "true");
+    setHasEntered(true);
+  }
 
   function requestUserLocation() {
     // Silencioso ante rechazo, timeout, o falta de soporte -- la
@@ -127,11 +143,41 @@ function App() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tokenFromUrl = params.get("access_token");
+    const linkError = params.get("google_link_error");
+    const linkSuccess = params.get("google_linked");
+
+    if (linkError) {
+      // Vuelta de /api/auth/google/login?link=true con un error (ej.
+      // esa cuenta de Google ya esta vinculada a otro usuario) -- el
+      // backend redirige aca con el motivo en vez de mostrar un JSON
+      // crudo. Se abre el panel directo en "Cuentas conectadas" para
+      // que el usuario vea el aviso sin tener que ir a buscarlo.
+      setGoogleLinkError(linkError);
+      setHasEntered(true);
+      setUserPanelInitialTab("cuentas");
+      setShowUserPanel(true);
+    }
+
+    if (linkSuccess) {
+      // Mismo mecanismo que el error, pero para el caso de exito (incluye
+      // vincular una cuenta que ya estaba vinculada a si misma) -- sin
+      // esto, el link terminaba en silencio: no habia forma de saber que
+      // funciono salvo yendo a mirar el panel.
+      setGoogleLinkSuccess(true);
+      setHasEntered(true);
+      setUserPanelInitialTab("cuentas");
+      setShowUserPanel(true);
+    }
+
     if (tokenFromUrl) {
       setAccessToken(tokenFromUrl);
       setHasEntered(true);
       window.history.replaceState({}, "", "/");
       return;
+    }
+
+    if (linkError || linkSuccess) {
+      window.history.replaceState({}, "", "/");
     }
 
     fetch(`${API_BASE}/api/auth/refresh`, {
@@ -187,9 +233,49 @@ function App() {
     fetchGenreWeights();
   }, [accessToken]);
 
+  useEffect(() => {
+    if (!accessToken) {
+      setSavedEventIds(null);
+      return;
+    }
+    fetch(`${API_BASE}/api/users/me/saved-events/ids`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((ids) => setSavedEventIds(new Set(ids)))
+      .catch(() => setSavedEventIds(new Set()));
+  }, [accessToken]);
+
+  // Unico lugar que sabe guardar/sacar un evento -- el corazon de
+  // EventCard (mapa, chat, o la lista de guardados del panel) siempre
+  // llama a esto mismo, asi el Set queda consistente sin importar desde
+  // donde se disparo el click ni hace falta refrescar nada del server.
+  // Optimista: cambia el Set al toque, sin esperar la respuesta.
+  function toggleSavedEvent(eventId) {
+    if (!accessToken) return;
+    const wasSaved = savedEventIds?.has(eventId);
+    setSavedEventIds((prev) => {
+      const next = new Set(prev || []);
+      if (wasSaved) next.delete(eventId);
+      else next.add(eventId);
+      return next;
+    });
+    fetch(`${API_BASE}/api/users/me/saved-events/${eventId}`, {
+      method: wasSaved ? "DELETE" : "POST",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    }).catch(() => {});
+  }
+
   function handleAuthSuccess(token) {
     setAccessToken(token);
     setShowAuthModal(false);
+  }
+
+  // Actualiza currentUser directo en memoria (sin esperar un F5 ni
+  // volver a pegarle a /api/auth/me) -- lo que se guarde en el panel
+  // (por ahora, el nombre) se ve reflejado en el Navbar al toque.
+  function handleUserUpdate(patch) {
+    setCurrentUser((u) => (u ? { ...u, ...patch } : u));
   }
 
   function handleLogout() {
@@ -245,7 +331,7 @@ function App() {
   }
 
   if (!hasEntered) {
-    return <LandingPage onEnter={() => setHasEntered(true)} />;
+    return <LandingPage onEnter={handleEnter} />;
   }
 
   return (
@@ -254,6 +340,10 @@ function App() {
         currentUser={currentUser}
         onOpenAuth={() => setShowAuthModal(true)}
         onOpenPreferences={() => setShowSurvey(true)}
+        onOpenUserPanel={() => {
+          setUserPanelInitialTab("perfil");
+          setShowUserPanel(true);
+        }}
         onLogout={handleLogout}
       />
       <div className="flex-1 relative overflow-hidden">
@@ -267,6 +357,8 @@ function App() {
           onLocateMe={requestUserLocation}
           genreWeights={genreWeights}
           onCloseCarousel={fetchMapEvents}
+          savedEventIds={savedEventIds}
+          onToggleSaved={toggleSavedEvent}
           mode={mode}
           activeIndex={activeIndex}
           onNext={handleNext}
@@ -294,6 +386,25 @@ function App() {
 
       {showAuthModal && (
         <AuthModal onClose={() => setShowAuthModal(false)} onLoginSuccess={handleAuthSuccess} />
+      )}
+
+      {showUserPanel && currentUser && (
+        <UserPanel
+          accessToken={accessToken}
+          currentUser={currentUser}
+          genreWeights={genreWeights}
+          initialTab={userPanelInitialTab}
+          linkError={googleLinkError}
+          linkSuccess={googleLinkSuccess}
+          savedEventIds={savedEventIds}
+          onToggleSaved={toggleSavedEvent}
+          onUserUpdate={handleUserUpdate}
+          onClose={() => {
+            setShowUserPanel(false);
+            setGoogleLinkError(null);
+            setGoogleLinkSuccess(false);
+          }}
+        />
       )}
     </div>
   );

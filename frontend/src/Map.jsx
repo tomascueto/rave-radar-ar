@@ -75,10 +75,40 @@ export function getDateRange(filterKey) {
 
 const NEUTRAL_COLOR = "#7C3AED"; // violeta de marca -- sin datos de afinidad (no logueado o sin preferencias)
 
+function mixHexColors(hexA, hexB, t) {
+  const a = parseInt(hexA.slice(1), 16);
+  const b = parseInt(hexB.slice(1), 16);
+  const mix = (shift) => {
+    const va = (a >> shift) & 255;
+    const vb = (b >> shift) & 255;
+    return Math.round(va + (vb - va) * t);
+  };
+  return `#${[mix(16), mix(8), mix(0)].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+}
+
+const STRONG_GREEN = "#16A34A";
+
+// Match parcial: mezcla real de amarillo pastel y el verde fuerte, no un
+// verde mas palido -- a pedido explicito del usuario. t=0.3 (mas cerca
+// del amarillo que del verde) para que se sienta claramente "mas tibio"
+// que un match total sin perder el caracter verde.
+const PARTIAL_GREEN_YELLOW = mixHexColors("#FDE68A", STRONG_GREEN, 0.3);
+
+// Naranja de "sin match" mezclado con blanco -- a pedido explicito del
+// usuario: el naranja vivo original (#FB923C) se sentia demasiado "de
+// alarma" para un evento que igual puede valer la pena. Sigue siendo
+// naranja, solo menos agresivo.
+const SOFT_ORANGE = mixHexColors("#FB923C", "#FFFFFF", 0.35);
+
+// ratio = proporcion de los PROPIOS generos del evento que coinciden con
+// las preferencias guardadas (ver affinityScoreFor mas abajo) -- no
+// relativo al mejor puntaje entre los eventos visibles. A pedido
+// explicito del usuario: el verde fuerte exige que coincidan TODOS los
+// generos del evento, no la mayoria.
 function affinityColor(ratio) {
-  if (ratio >= 0.5) return "#16A34A"; // verde fuerte: entre los que mas coinciden
-  if (ratio > 0) return "#86EFAC"; // verde claro: coincide algo, no es de los mejores
-  return "#FB923C"; // naranja: no coincide con ningun genero preferido
+  if (ratio >= 1) return STRONG_GREEN; // coinciden TODOS los generos del evento
+  if (ratio > 0) return PARTIAL_GREEN_YELLOW; // coincide alguno, no todos
+  return SOFT_ORANGE; // no coincide con ningun genero preferido
 }
 
 // Leidos de affinityColor en vez de repetir los hex a mano -- un solo lugar
@@ -86,6 +116,7 @@ function affinityColor(ratio) {
 // como para el color de un cluster (ver dominantClusterColor mas abajo).
 const STRONG_MATCH_COLOR = affinityColor(1);
 const PARTIAL_MATCH_COLOR = affinityColor(0.25);
+const NO_MATCH_COLOR = affinityColor(0);
 
 function makeIcon(precision, isActive, affinityRatio, isPersonalized, animate = false, delayMs = 0) {
   const color = isPersonalized ? affinityColor(affinityRatio) : NEUTRAL_COLOR;
@@ -224,14 +255,28 @@ function MapController({ flyToEvent, userLocation, isChatMode }) {
   const flyToEventRef = useRef(flyToEvent);
   flyToEventRef.current = flyToEvent;
 
+  // Coordenadas del ultimo flyTo realmente disparado -- si el siguiente
+  // evento (tipicamente al navegar un mini-carrusel de cluster, ver
+  // EventClusterLayer) esta a menos de 30m, es el mismo lugar en la
+  // practica: volar igual solo produce un mini salto que va y vuelve al
+  // mismo sitio, sin ningun valor informativo.
+  const lastFlownCoordsRef = useRef(null);
+
   useEffect(() => {
     if (flyToEvent) {
-      // En el carrusel del chat, siempre se lleva a un zoom fijo (15) --
-      // asi cada evento se ve con el mismo nivel de detalle. Explorando
-      // libremente, en cambio, se respeta el zoom que el usuario ya
-      // tenia elegido: un click en un pin centra, no reencuadra.
-      const targetZoom = isChatMode ? 15 : map.getZoom();
-      map.flyTo([flyToEvent.lat, flyToEvent.lng], targetZoom, { duration: 0.8 });
+      const last = lastFlownCoordsRef.current;
+      const samePlace = last && haversineKm(last.lat, last.lng, flyToEvent.lat, flyToEvent.lng) < 0.03;
+      if (!samePlace) {
+        // En el carrusel del chat, siempre se lleva a un zoom fijo (15) --
+        // asi cada evento se ve con el mismo nivel de detalle. Explorando
+        // libremente, en cambio, se respeta el zoom que el usuario ya
+        // tenia elegido: un click en un pin centra, no reencuadra.
+        const targetZoom = isChatMode ? 15 : map.getZoom();
+        map.flyTo([flyToEvent.lat, flyToEvent.lng], targetZoom, { duration: 0.8 });
+      }
+      lastFlownCoordsRef.current = { lat: flyToEvent.lat, lng: flyToEvent.lng };
+    } else {
+      lastFlownCoordsRef.current = null;
     }
   }, [flyToEvent, isChatMode, map]);
 
@@ -299,7 +344,7 @@ function ZoomSlider() {
         type="range"
         min={3}
         max={18}
-        step={1}
+        step={0.05}
         value={zoom}
         onChange={(e) => map.setZoom(Number(e.target.value))}
         aria-label="Zoom del mapa"
@@ -335,7 +380,9 @@ function haversineKm(lat1, lng1, lat2, lng2) {
 // - Cluster "angosto" (< 30m de diagonal -- practicamente el mismo venue,
 //   zoom no los va a separar nunca): abre un mini-carrusel con esos
 //   eventos, reusando el mismo EventDetailOverlay que ya sirve al chat.
-function EventClusterLayer({ events, setClusterCarousel, isPersonalized, genreWeights, children }) {
+function EventClusterLayer({
+  events, setClusterCarousel, clusterCarousel, isPersonalized, genreWeights, children,
+}) {
   const map = useMap();
   const groupRef = useRef(null);
 
@@ -349,6 +396,42 @@ function EventClusterLayer({ events, setClusterCarousel, isPersonalized, genreWe
     groupRef.current?.refreshClusters();
   }, [isPersonalized, genreWeights]);
 
+  // Mientras el mini-carrusel de un cluster esta abierto, su pin en el
+  // mapa se repinta con el color REAL del evento que se esta mostrando en
+  // ESE momento (verde fuerte, verde-amarillo, o naranja -- el mismo que
+  // ya calculo affinityColor para ese evento puntual) -- no el color
+  // "dominante" del cluster entero (ver dominantClusterColor, que solo
+  // aplica mientras el cluster esta cerrado). Si adentro de un cluster
+  // verde-amarillo hay un evento sin match, navegar hasta el con las
+  // flechas del mini-carrusel vuelve a pintar el pin de naranja para ESE
+  // evento puntual -- eso es intencional, no un bug: el color dominante y
+  // el color del evento activo son dos preguntas distintas.
+  // activeClusterOverride (modulo, no React) es la fuente de verdad que
+  // lee makeClusterIcon, emparejado por el id de los eventos (NUNCA por
+  // identidad del objeto cluster de Leaflet: el cluster que llega en el
+  // evento de click puede quedar desprendido del mapa -- _map undefined
+  // -- apenas leaflet.markercluster rearma su arbol interno, asi que
+  // guardar y despues llamar metodos sobre esa referencia puntual no es
+  // confiable). refreshClusters() -- que ya se usa para el color
+  // dominante -- es lo que fuerza a reconstruir el icono ya usando el
+  // override.
+  const clusterOverrideActiveRef = useRef(false);
+  useEffect(() => {
+    if (clusterCarousel) {
+      const { colors, index, events: carouselEvents } = clusterCarousel;
+      activeClusterOverride = {
+        eventIds: new Set(carouselEvents.map((ev) => ev.id)),
+        color: colors[index],
+      };
+      groupRef.current?.refreshClusters();
+      clusterOverrideActiveRef.current = true;
+    } else if (clusterOverrideActiveRef.current) {
+      activeClusterOverride = null;
+      groupRef.current?.refreshClusters();
+      clusterOverrideActiveRef.current = false;
+    }
+  }, [clusterCarousel]);
+
   function handleClusterClick(e) {
     const cluster = e.layer;
     const bounds = cluster.getBounds();
@@ -357,13 +440,33 @@ function EventClusterLayer({ events, setClusterCarousel, isPersonalized, genreWe
     const diagonalKm = haversineKm(sw.lat, sw.lng, ne.lat, ne.lng);
 
     if (diagonalKm < 0.03) {
-      const childLatLngs = cluster.getAllChildMarkers().map((m) => m.getLatLng());
-      const childEvents = events.filter((ev) =>
-        childLatLngs.some(
-          (ll) => Math.abs(ll.lat - ev.lat) < 1e-6 && Math.abs(ll.lng - ev.lng) < 1e-6
-        )
-      );
-      setClusterCarousel({ events: childEvents, index: 0 });
+      // Se arman events y colors juntos, emparejados por indice, para que
+      // el efecto de arriba pueda pintar el pin del color exacto del
+      // evento activo sin tener que volver a buscar el marker cada vez
+      // que cambia el index del carrusel. Se empareja por flyerId (el id
+      // del evento, taggeado en el marker igual que flyerColor), NUNCA
+      // por coordenadas -- varios eventos de este mismo cluster pueden
+      // compartir las coordenadas EXACTAS (fallback "centro de la
+      // ciudad"), y matchear por lat/lng ahi siempre devuelve el primer
+      // marker encontrado para todos, pintando el pin con el color de un
+      // solo evento en vez del que corresponde a cada uno.
+      // Objeto plano, no "new Map(...)" -- el default export de este
+      // mismo archivo ya se llama Map, y esa colision hace que "new
+      // Map(...)" invoque a nuestro propio componente en vez de la clase
+      // nativa (rompe con "Invalid hook call").
+      const eventsById = {};
+      events.forEach((ev) => { eventsById[ev.id] = ev; });
+      const children = cluster.getAllChildMarkers();
+      const childEvents = [];
+      const childColors = [];
+      children.forEach((marker) => {
+        const ev = eventsById[marker.options.flyerId];
+        if (ev) {
+          childEvents.push(ev);
+          childColors.push(marker.options.flyerColor || NEUTRAL_COLOR);
+        }
+      });
+      setClusterCarousel({ events: childEvents, colors: childColors, index: 0 });
     } else {
       map.fitBounds(bounds, { padding: [50, 50] });
     }
@@ -384,30 +487,29 @@ function EventClusterLayer({ events, setClusterCarousel, isPersonalized, genreWe
 }
 
 // Color dominante de un cluster -- para no perder de vista un match adentro
-// de un grupo de pines violeta. Si predomina (mitad o mas) el match fuerte,
-// el cluster se pinta del mismo verde fuerte; si hay match pero es
-// minoritario, verde claro; sin ningun match, el color que ya compartan
-// todos los hijos (violeta si no esta personalizado, naranja si lo esta
-// pero ninguno matchea).
+// de un grupo de pines violeta. El verde fuerte (STRONG_MATCH_COLOR) se usa
+// apenas UN solo evento del cluster matchea al 100% -- no hace falta que
+// matcheen todos, basta con que haya al menos uno para que valga la pena
+// abrir ese cluster. Si no hay ningun 100% pero SI hay al menos un match
+// parcial (mezclado o no con eventos sin match), se usa el verde-amarillo
+// de PARTIAL_MATCH_COLOR. Un cluster verde-amarillo entonces SIEMPRE tiene
+// adentro al menos un evento con match parcial -- si TODOS sus eventos son
+// 0% match, el cluster tiene que ser naranja (NO_MATCH_COLOR), no
+// verde-amarillo: no hay nada parcial que justifique el verde ahi. Cuando
+// no esta personalizado, colors ya viene todo en NEUTRAL_COLOR (violeta),
+// asi que ninguna de las condiciones de match aplica.
 function dominantClusterColor(colors) {
   if (colors.length === 0) return NEUTRAL_COLOR;
-  const matchCount = colors.filter(
-    (c) => c === STRONG_MATCH_COLOR || c === PARTIAL_MATCH_COLOR
-  ).length;
-  if (matchCount === 0) return colors[0];
-  return matchCount / colors.length >= 0.5 ? STRONG_MATCH_COLOR : PARTIAL_MATCH_COLOR;
+  if (colors.includes(STRONG_MATCH_COLOR)) return STRONG_MATCH_COLOR;
+  if (colors.includes(NEUTRAL_COLOR)) return NEUTRAL_COLOR;
+  if (colors.includes(PARTIAL_MATCH_COLOR)) return PARTIAL_MATCH_COLOR;
+  return NO_MATCH_COLOR;
 }
 
-// Reemplaza el ícono default de leaflet.markercluster (que requiere su
-// propio CSS, nunca importado -- ver DESIGN.md) por uno propio en el mismo
-// lenguaje visual que .flyer-pin: mismo sistema de color que los pines
-// individuales (ver dominantClusterColor), borde blanco, y el conteo de
-// eventos agrupados.
-function makeClusterIcon(cluster) {
-  const children = cluster.getAllChildMarkers();
-  const count = children.length;
-  const colors = children.map((m) => m.options.flyerColor || NEUTRAL_COLOR);
-  const color = dominantClusterColor(colors);
+// Icono de cluster generico -- separado de makeClusterIcon para poder
+// pisar el icono de UN cluster puntual con un color especifico (ver
+// clusterCarousel.colors mas abajo) sin pasar por dominantClusterColor.
+function buildClusterDivIcon(count, color) {
   const size = count >= 20 ? 48 : count >= 10 ? 42 : 36;
   return L.divIcon({
     html: `<div class="flyer-cluster flyer-sans" style="width:${size}px;height:${size}px;font-size:${
@@ -416,6 +518,48 @@ function makeClusterIcon(cluster) {
     className: "",
     iconSize: [size, size],
   });
+}
+
+// Reemplaza el ícono default de leaflet.markercluster (que requiere su
+// propio CSS, nunca importado -- ver DESIGN.md) por uno propio en el mismo
+// lenguaje visual que .flyer-pin: mismo sistema de color que los pines
+// individuales (ver dominantClusterColor), borde blanco, y el conteo de
+// eventos agrupados.
+// Mutable fuera de React a proposito -- el objeto cluster que llega en el
+// evento de click puede quedar desprendido del mapa apenas
+// leaflet.markercluster reconstruye su arbol interno (el cluster
+// literalmente pierde su icono/posicion), asi que emparejar por
+// identidad de ESE objeto puntual no es confiable. Emparejar por el id
+// de los eventos (via flyerId, taggeado en cada marker igual que
+// flyerColor) funciona sin importar que objeto cluster represente al
+// grupo en el momento en que leaflet decide (re)pintarlo.
+let activeClusterOverride = null;
+
+function makeClusterIcon(cluster) {
+  const children = cluster.getAllChildMarkers();
+  const count = children.length;
+  if (activeClusterOverride && children.some((m) => activeClusterOverride.eventIds.has(m.options.flyerId))) {
+    return buildClusterDivIcon(count, activeClusterOverride.color);
+  }
+  const colors = children.map((m) => m.options.flyerColor || NEUTRAL_COLOR);
+  const color = dominantClusterColor(colors);
+  return buildClusterDivIcon(count, color);
+}
+
+// Dibujado, no emoji -- mismo criterio que RadarIcon/ChevronIcon. Relleno
+// (currentColor) cuando el evento esta guardado, solo contorno si no.
+function HeartIcon({ filled, className }) {
+  return (
+    <svg viewBox="0 0 24 24" className={className} xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M12 20.5s-7.5-4.6-9.8-9.1C.6 8.1 1.7 4.8 5 3.7c2.1-.7 4.3.1 5.5 2 .2.3.5.3.7 0 1.2-1.9 3.4-2.7 5.5-2 3.3 1.1 4.4 4.4 2.8 7.7-2.3 4.5-9.8 9.1-9.8 9.1z"
+        fill={filled ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
 }
 
 // Ocupa el lugar de la foto cuando el evento no tiene flyer_url -- mismo
@@ -437,27 +581,72 @@ function FlyerPlaceholderIcon({ className }) {
 // del chat: un solo componente, sin ninguna version reducida para el
 // carrusel. Ya no vive dentro de un popup de Leaflet: es un elemento
 // propio, centrado en la pantalla con CSS simple (ver EventDetailOverlay).
-function EventCard({ ev, genreWeights }) {
+// Exportado para reusarse tal cual en la lista de "Eventos guardados" del
+// panel de usuario -- onRemove es opcional a proposito: solo esa lista lo
+// pasa, así que en el mapa/chat (que nunca lo pasan) el boton ni existe.
+// isSaved/onToggleSave manejan el corazon: onToggleSave llega undefined
+// cuando no hay sesion iniciada (el corazon se muestra pero deshabilitado,
+// con tooltip), nunca por eleccion de quien renderiza la tarjeta.
+export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave }) {
   // Generos del evento que tambien estan entre las preferencias guardadas
   // del usuario -- se resaltan distinto (ver .flyer-chip-match). genres y
   // genre_ids vienen del backend como arrays paralelos (mismo indice).
   const preferredGenreIds = genreWeights ? new Set(Object.keys(genreWeights)) : null;
 
+  // Si la imagen falla en cargar (URL rota, no solo ausente), se cae al
+  // mismo placeholder que un evento sin flyer_url -- nunca un <img> oculto
+  // a mano. Reseteado por ev.id: sin esto, al no tener key el <img> se
+  // reutiliza entre eventos del carrusel, y un error de CARGA anterior
+  // (display:none puesto por onError, fuera del control de React) quedaba
+  // pegado para el siguiente evento aunque su foto cargara bien.
+  const [imgFailed, setImgFailed] = useState(false);
+  useEffect(() => {
+    setImgFailed(false);
+  }, [ev.id]);
+
+  const showPlaceholder = !ev.flyer_url || imgFailed;
+
   return (
-    <div className="w-64 flyer-card p-3">
-      {ev.flyer_url ? (
-        <img
-          src={ev.flyer_url}
-          alt={ev.name}
-          className="w-full h-28 object-cover flyer-card-image mb-2"
-          onError={(e) => { e.target.style.display = "none"; }}
-        />
-      ) : (
-        <div className="w-full h-28 flyer-card-image flyer-card-placeholder mb-2 flex items-center justify-center">
-          <FlyerPlaceholderIcon className="w-8 h-8" />
-        </div>
-      )}
-      <p className="flyer-sans flyer-card-ink font-bold uppercase tracking-wide text-base leading-snug">
+    <div className="w-64 h-full flyer-card p-3 flex flex-col">
+      <div className="relative mb-2">
+        {showPlaceholder ? (
+          <div className="w-full h-28 flyer-card-image flyer-card-placeholder flex items-center justify-center">
+            <FlyerPlaceholderIcon className="w-8 h-8" />
+          </div>
+        ) : (
+          <img
+            key={ev.id}
+            src={ev.flyer_url}
+            alt={ev.name}
+            className="w-full h-28 object-cover flyer-card-image"
+            onError={() => setImgFailed(true)}
+          />
+        )}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleSave?.();
+          }}
+          disabled={!onToggleSave}
+          title={
+            !onToggleSave
+              ? "Iniciá sesión para guardar eventos"
+              : isSaved
+              ? "Sacar de guardados"
+              : "Guardar evento"
+          }
+          className={`flyer-heart-btn absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+            isSaved ? "is-saved" : ""
+          }`}
+        >
+          <HeartIcon filled={!!isSaved} className="w-4 h-4" />
+        </button>
+      </div>
+      {/* min-h + line-clamp reservan siempre el espacio de 2 lineas --
+          nombres de 1 sola linea no dejan la tarjeta mas corta que una de
+          2, que es lo que desalineaba los botones de abajo entre tarjetas
+          vecinas en la grilla de "Eventos guardados". */}
+      <p className="flyer-sans flyer-card-ink font-bold uppercase tracking-wide text-base leading-snug line-clamp-2 min-h-[2.75rem]">
         {ev.name}
       </p>
       <p className="flyer-sans flyer-card-ink-muted text-sm mt-1">{ev.venue_name}</p>
@@ -492,43 +681,75 @@ function EventCard({ ev, genreWeights }) {
         </p>
       )}
 
-      {ev.ticket_url && (
-        <a
-          href={ev.ticket_url}
-          target="_blank"
-          rel="noreferrer"
-          className="flyer-cta flyer-sans mt-3 block text-center uppercase tracking-wide font-bold text-sm py-2.5 transition-colors"
-        >
-          Comprar entrada
-        </a>
-      )}
+      {/* mt-auto empuja este bloque al fondo de la tarjeta -- junto con
+          h-full en el contenedor de arriba, hace que "Comprar entrada" y
+          "Sacar de guardados" queden a la misma altura entre tarjetas
+          vecinas sin importar cuanto contenido tenga cada una arriba
+          (genero, aviso de ubicacion, etc.), no solo el nombre. */}
+      <div className="mt-auto pt-3">
+        {ev.ticket_url && (
+          <a
+            href={ev.ticket_url}
+            target="_blank"
+            rel="noreferrer"
+            className="flyer-cta flyer-sans block text-center uppercase tracking-wide font-bold text-sm py-2.5 transition-colors"
+          >
+            Comprar entrada
+          </a>
+        )}
+
+        {onRemove && (
+          <button
+            onClick={onRemove}
+            className="flyer-card-btn-danger flyer-sans mt-2 w-full text-center uppercase tracking-wide font-semibold text-xs py-2 rounded-lg transition-colors"
+          >
+            Sacar de guardados
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-// Dos modos, dos comportamientos -- no un solo mecanismo tratando de
-// servir a los dos:
+// Flechas del carrusel -- dibujadas, no el caracter tipografico ‹ › que
+// usaban antes: ese glifo no queda centrado dentro de un boton circular
+// (su caja de texto tiene ascenso/descenso asimetrico segun la fuente),
+// un SVG con geometria simetrica si.
+function ChevronIcon({ direction = "left", className }) {
+  const d = direction === "left" ? "M15 6L9 12L15 18" : "M9 6L15 12L9 18";
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+      <path d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// isChatMode controla el "mueble" del carrusel (flechas + badge X/N), que
+// se usa tanto para el carrusel del chat como para el mini-carrusel de un
+// cluster -- ambos navegan una lista de eventos igual. dismissOnOutsideClick
+// es una decision aparte:
 //
-// - Explorando el mapa libremente (isChatMode=false): clickear un pin
-//   muestra su tarjeta centrada; clickear afuera la cierra. Perder la
-//   tarjeta no cuesta nada -- se vuelve a clickear el mismo pin.
+// - Explorando el mapa libremente, o con un mini-carrusel de cluster
+//   abierto: clickear afuera cierra. Perder la tarjeta no cuesta nada --
+//   un cluster se puede volver a clickear, y explorar libre no tenia
+//   nada que perder.
 //
-// - Navegando resultados del chat (isChatMode=true): la tarjeta se
-//   muestra centrada con flechas a los costados, siempre en el mismo
-//   lugar (independiente del pin). Clickear afuera NO la cierra -- perder
-//   el carrusel entero obligaria a volver al chat y pedir los eventos de
-//   nuevo. Solo las flechas, la X, o cambiar de filtro lo cierran.
+// - Navegando resultados del chat (sin cluster encima): clickear afuera
+//   NO cierra -- perder el carrusel entero obligaria a volver al chat y
+//   pedir los eventos de nuevo. Solo las flechas, la X, o cambiar de
+//   filtro lo cierran.
 function EventDetailOverlay({
-  ev, isChatMode, activeIndex, total, onNext, onPrev, onClose, genreWeights,
+  ev, isChatMode, dismissOnOutsideClick, activeIndex, total, onNext, onPrev, onClose, genreWeights,
+  isSaved, onToggleSave,
 }) {
   if (!ev) return null;
 
   return (
     <div
       className={`absolute inset-0 z-[1500] flex items-center justify-center ${
-        isChatMode ? "pointer-events-none" : ""
+        dismissOnOutsideClick ? "" : "pointer-events-none"
       }`}
-      onClick={isChatMode ? undefined : onClose}
+      onClick={dismissOnOutsideClick ? onClose : undefined}
     >
       <div
         className="relative flex items-center gap-3 pointer-events-auto"
@@ -539,9 +760,9 @@ function EventDetailOverlay({
           <button
             onClick={onPrev}
             disabled={activeIndex === 0}
-            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn text-xl disabled:opacity-30 transition-colors"
+            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
           >
-            ‹
+            <ChevronIcon direction="left" className="w-4 h-4" />
           </button>
         )}
 
@@ -558,16 +779,16 @@ function EventDetailOverlay({
               {activeIndex + 1} / {total}
             </span>
           )}
-          <EventCard ev={ev} genreWeights={genreWeights} />
+          <EventCard ev={ev} genreWeights={genreWeights} isSaved={isSaved} onToggleSave={onToggleSave} />
         </div>
 
         {isChatMode && (
           <button
             onClick={onNext}
             disabled={activeIndex === total - 1}
-            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn text-xl disabled:opacity-30 transition-colors"
+            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
           >
-            ›
+            <ChevronIcon direction="right" className="w-4 h-4" />
           </button>
         )}
       </div>
@@ -578,7 +799,7 @@ function EventDetailOverlay({
 export default function Map({
   events, loading, error, filter, onFilterChange,
   mode, activeIndex, onNext, onPrev, userLocation, onLocateMe, genreWeights,
-  onCloseCarousel,
+  onCloseCarousel, savedEventIds, onToggleSaved,
 }) {
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
 
@@ -607,6 +828,11 @@ export default function Map({
     : baseDisplayedEvent;
   const flyToEvent = displayedEvent;
   const overlayIsCarousel = clusterCarousel ? true : isChatMode;
+
+  // Clickear afuera cierra en todos los casos MENOS el carrusel del chat
+  // puro (sin un cluster encima) -- un mini-carrusel de cluster se puede
+  // volver a abrir con otro click, perderlo no cuesta nada.
+  const dismissOnOutsideClick = clusterCarousel ? true : !isChatMode;
 
   function handleOverlayNext() {
     if (clusterCarousel) {
@@ -656,15 +882,21 @@ export default function Map({
   // antes de un cambio de preferencias) siempre se pinte con el color
   // correcto: no importa cuando se trajo el evento, la afinidad se
   // recalcula con los pesos de AHORA cada vez que se dibuja.
+  //
+  // Devuelve directamente un ratio 0..1 -- la proporcion de los PROPIOS
+  // generos del evento que estan entre las preferencias guardadas. Un
+  // evento con generos [Progressive House, Techno] donde el usuario solo
+  // tiene guardado "Progressive House" matchea al 50%, sin importar
+  // cuantas preferencias mas tenga guardadas o que tan bien matcheen
+  // otros eventos visibles en el mapa (antes se comparaba contra el
+  // mejor puntaje entre los eventos visibles, lo cual con una sola
+  // preferencia activa volvia binario el resultado: cualquier evento que
+  // matcheara aunque sea un genero quedaba pintado como 100% match).
   function affinityScoreFor(ev) {
-    if (!isPersonalized || !ev.genre_ids) return 0;
-    return ev.genre_ids.reduce((sum, gid) => sum + (genreWeights[gid] || 0), 0);
+    if (!isPersonalized || !ev.genre_ids || ev.genre_ids.length === 0) return 0;
+    const matchCount = ev.genre_ids.filter((gid) => genreWeights[gid] !== undefined).length;
+    return matchCount / ev.genre_ids.length;
   }
-
-  // Normaliza cada score contra el maximo actualmente visible en el
-  // mapa -- asi el gradiente siempre se ve proporcional, sin depender
-  // de valores absolutos fijos.
-  const maxAffinity = Math.max(0, ...events.map(affinityScoreFor));
 
   return (
     <div className="relative h-full w-full">
@@ -710,7 +942,14 @@ export default function Map({
         </div>
       )}
 
-      <MapContainer center={DEFAULT_CENTER} zoom={DEFAULT_ZOOM} zoomControl={false} className="h-full w-full">
+      <MapContainer
+        center={DEFAULT_CENTER}
+        zoom={DEFAULT_ZOOM}
+        zoomControl={false}
+        zoomSnap={0.05}
+        zoomDelta={0.05}
+        className="h-full w-full"
+      >
         <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} maxZoom={20} />
         <MapController flyToEvent={flyToEvent} userLocation={userLocation} isChatMode={isChatMode} />
         <ZoomSlider />
@@ -728,11 +967,12 @@ export default function Map({
         <EventClusterLayer
           events={events}
           setClusterCarousel={setClusterCarousel}
+          clusterCarousel={clusterCarousel}
           isPersonalized={isPersonalized}
           genreWeights={genreWeights}
         >
           {events.map((ev, idx) => {
-            const ratio = maxAffinity > 0 ? affinityScoreFor(ev) / maxAffinity : 0;
+            const ratio = affinityScoreFor(ev);
             // Mismo color que ya decide makeIcon, pero guardado ademas en
             // un option propio del marker -- es lo unico que le permite a
             // un cluster (ver makeClusterIcon) saber si adentro hay un
@@ -743,7 +983,15 @@ export default function Map({
                 key={ev.id}
                 position={[ev.lat, ev.lng]}
                 ref={(marker) => {
-                  if (marker) marker.options.flyerColor = pinColor;
+                  if (marker) {
+                    marker.options.flyerColor = pinColor;
+                    // Varios eventos pueden compartir EXACTAMENTE las
+                    // mismas coordenadas (fallback "centro de la ciudad",
+                    // ver venue_precision) -- el id es lo unico que
+                    // distingue de forma inequivoca a que evento
+                    // pertenece cada marker (ver handleClusterClick).
+                    marker.options.flyerId = ev.id;
+                  }
                 }}
                 icon={makeIcon(
                   ev.venue_precision,
@@ -769,12 +1017,17 @@ export default function Map({
       <EventDetailOverlay
         ev={displayedEvent}
         isChatMode={overlayIsCarousel}
+        dismissOnOutsideClick={dismissOnOutsideClick}
         activeIndex={clusterCarousel ? clusterCarousel.index : activeIndex}
         total={clusterCarousel ? clusterCarousel.events.length : events.length}
         onNext={handleOverlayNext}
         onPrev={handleOverlayPrev}
         onClose={handleOverlayClose}
         genreWeights={genreWeights}
+        isSaved={!!(savedEventIds && displayedEvent && savedEventIds.has(displayedEvent.id))}
+        onToggleSave={
+          savedEventIds && displayedEvent ? () => onToggleSaved(displayedEvent.id) : undefined
+        }
       />
     </div>
   );

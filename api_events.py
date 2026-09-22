@@ -35,10 +35,10 @@ from qdrant_client import QdrantClient
 from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import joinedload
 
-from auth.dependencies import get_current_user_optional
+from auth.dependencies import get_current_user, get_current_user_optional
 from auth.router import router as auth_router
 from database.connection import SessionLocal
-from database.models import Event, EventGenre, User
+from database.models import Event, EventGenre, User, UserSavedEvent
 from rag.agent import run_agent
 from users.router import get_user_genre_weights, router as users_router
 
@@ -204,5 +204,44 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
             response_text="Uy, tuve un problema procesando tu consulta. Probá de nuevo en un momento.",
             events=[],
         )
+    finally:
+        db.close()
+
+
+@app.get("/api/users/me/saved-events", response_model=list[MapEvent])
+def get_my_saved_events(user: User = Depends(get_current_user)):
+    """
+    Detalle completo (foto, venue, generos, etc.) de los eventos que el
+    usuario guardo. Vive aca, no en users/router.py, porque necesita
+    MapEvent y _event_to_map_event, definidos en este archivo -- ponerlo
+    en users/router.py obligaria a importar desde aca hacia alla, y este
+    archivo ya importa DE users/router.py (get_user_genre_weights),
+    generando un import circular.
+    """
+    db = SessionLocal()
+    try:
+        saved_ids = [
+            row[0] for row in
+            db.query(UserSavedEvent.event_id).filter(UserSavedEvent.user_id == user.id).all()
+        ]
+        if not saved_ids:
+            return []
+
+        events = (
+            db.query(Event)
+            .options(
+                joinedload(Event.venue),
+                joinedload(Event.genres).joinedload(EventGenre.genre),
+            )
+            .filter(Event.id.in_(saved_ids))
+            .all()
+        )
+
+        result = []
+        for ev in events:
+            me = _event_to_map_event(ev)
+            if me is not None:
+                result.append(me)
+        return result
     finally:
         db.close()

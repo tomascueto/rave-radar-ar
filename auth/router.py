@@ -3,7 +3,9 @@ Endpoints del flujo de login con Google. Una vez logueado, el resto del
 sistema (incluido el chat) nunca vuelve a hablar con Google -- solo con
 los JWT propios emitidos aca.
 """
+import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import quote
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse, RedirectResponse
@@ -31,12 +33,13 @@ BACKEND_URL = "http://localhost:8000"
 
 STATE_COOKIE = "oauth_state"
 REFRESH_COOKIE = "refresh_token"
+LINK_USER_COOKIE = "link_user_id"
 EMAIL_VERIFICATION_EXPIRE_HOURS = 24
 PASSWORD_RESET_EXPIRE_HOURS = 2
 
 
 @router.get("/google/login")
-def google_login():
+def google_login(link: bool = False, refresh_token: str | None = Cookie(default=None)):
     state = generate_state()
     login_url = build_login_url(state)
     response = RedirectResponse(login_url)
@@ -48,22 +51,78 @@ def google_login():
         STATE_COOKIE, state,
         httponly=True, samesite="lax", secure=False, max_age=600,
     )
+
+    if link:
+        # Flujo de VINCULACION: un usuario YA logueado quiere sumar Google
+        # como metodo de acceso adicional a su cuenta existente (no crear
+        # ni loguear a otro usuario). Como esto es una redireccion de
+        # navegador completa (no un fetch con header Authorization), la
+        # unica forma de saber quien es "el usuario actual" es a traves
+        # de la cookie de refresh, que si viaja automaticamente en una
+        # navegacion al mismo origen.
+        if not refresh_token:
+            raise HTTPException(status_code=401, detail="Necesitás una sesión activa para vincular una cuenta")
+
+        db = SessionLocal()
+        try:
+            token_hash = hash_refresh_token(refresh_token)
+            record = (
+                db.query(RefreshToken)
+                .filter(
+                    RefreshToken.token_hash == token_hash,
+                    RefreshToken.is_revoked == False,
+                    RefreshToken.expires_at > datetime.now(timezone.utc),
+                )
+                .first()
+            )
+            if record is None:
+                raise HTTPException(status_code=401, detail="Sesión inválida o expirada")
+
+            response.set_cookie(
+                LINK_USER_COOKIE, str(record.user_id),
+                httponly=True, samesite="lax", secure=False, max_age=600,
+            )
+        finally:
+            db.close()
+
     return response
 
 
+def _link_error_redirect(message: str) -> RedirectResponse:
+    """Solo para el flujo de VINCULACION (link_user_id presente): en vez
+    de una excepcion cruda -- el navegador quedaria mostrando el JSON del
+    backend en vez de volver a la app, porque este endpoint es una
+    redireccion de navegador completa, no un fetch -- vuelve a la app con
+    el motivo en un query param que el panel de usuario puede leer y
+    mostrar prolijamente. El flujo de login normal (sin link_user_id) no
+    se toca: sigue devolviendo la excepcion cruda de siempre."""
+    redirect = RedirectResponse(f"{FRONTEND_URL}/?google_link_error={quote(message)}")
+    redirect.delete_cookie(STATE_COOKIE)
+    redirect.delete_cookie(LINK_USER_COOKIE)
+    return redirect
+
+
 @router.get("/google/callback")
-def google_callback(code: str, state: str, oauth_state: str | None = Cookie(default=None)):
+def google_callback(
+    code: str, state: str,
+    oauth_state: str | None = Cookie(default=None),
+    link_user_id: str | None = Cookie(default=None),
+):
     if not oauth_state or state != oauth_state:
+        if link_user_id:
+            return _link_error_redirect("Estado inválido - posible intento de CSRF")
         raise HTTPException(status_code=400, detail="Estado inválido - posible intento de CSRF")
 
     try:
         profile = exchange_code_for_profile(code)
     except Exception:
+        if link_user_id:
+            return _link_error_redirect("No se pudo validar el login con Google")
         raise HTTPException(status_code=400, detail="No se pudo validar el login con Google")
 
     db = SessionLocal()
     try:
-        oauth_account = (
+        existing_oauth = (
             db.query(OAuthAccount)
             .filter(
                 OAuthAccount.provider == AuthProviderEnum.google,
@@ -72,30 +131,68 @@ def google_callback(code: str, state: str, oauth_state: str | None = Cookie(defa
             .first()
         )
 
-        if oauth_account:
-            user = db.query(User).filter(User.id == oauth_account.user_id).first()
-        else:
-            # Primer login: puede que el email ya exista (por ejemplo, si
-            # mas adelante se suma login por contrasena) -- en ese caso se
-            # vincula la cuenta de Google a ese usuario existente, en vez
-            # de crear un duplicado.
-            user = db.query(User).filter(User.email == profile["email"]).first()
-            if user is None:
-                user = User(
-                    email=profile["email"],
-                    display_name=profile.get("name"),
-                    avatar_url=profile.get("picture"),
-                    is_email_verified=True,  # Google ya lo verifico
-                )
-                db.add(user)
-                db.flush()  # asigna user.id sin cerrar la transaccion
+        if link_user_id:
+            # Flujo de VINCULACION: el usuario ya estaba logueado (identificado
+            # por la cookie que /google/login seteo con link=true) y quiere
+            # sumar esta cuenta de Google a SU MISMO usuario -- nunca crear
+            # ni loguear a un usuario distinto.
+            try:
+                target_user_id = uuid.UUID(link_user_id)
+            except ValueError:
+                return _link_error_redirect("Sesión de vinculación inválida")
 
-            oauth_account = OAuthAccount(
-                user_id=user.id,
-                provider=AuthProviderEnum.google,
-                provider_account_id=profile["sub"],
-            )
-            db.add(oauth_account)
+            user = db.query(User).filter(User.id == target_user_id).first()
+            if user is None:
+                return _link_error_redirect("Sesión de vinculación inválida")
+
+            if existing_oauth and existing_oauth.user_id != user.id:
+                # Esa cuenta de Google ya esta vinculada a OTRO usuario --
+                # no permitir. Evita que dos usuarios terminen compartiendo
+                # sin querer el mismo metodo de acceso.
+                return _link_error_redirect("Esa cuenta de Google ya está vinculada a otro usuario")
+
+            if existing_oauth is None:
+                db.add(OAuthAccount(
+                    user_id=user.id,
+                    provider=AuthProviderEnum.google,
+                    provider_account_id=profile["sub"],
+                ))
+                if user.avatar_url is None:
+                    # Vincular Google a una cuenta preexistente no traia
+                    # la foto de perfil -- solo pasaba en el flujo de
+                    # creacion/login normal. No pisa una foto que el
+                    # usuario ya tuviera (no existe forma de subir una
+                    # propia hoy, pero por las dudas).
+                    user.avatar_url = profile.get("picture")
+            # Si existing_oauth ya existe y ya es de este mismo usuario, no
+            # hay nada que hacer -- la vinculación ya estaba hecha (idempotente).
+
+        else:
+            # Flujo normal de login/registro -- sin cambios respecto al que
+            # ya existía.
+            if existing_oauth:
+                user = db.query(User).filter(User.id == existing_oauth.user_id).first()
+            else:
+                # Primer login: puede que el email ya exista (por ejemplo, si
+                # ya se registró por contraseña) -- en ese caso se vincula la
+                # cuenta de Google a ese usuario existente, en vez de crear
+                # un duplicado.
+                user = db.query(User).filter(User.email == profile["email"]).first()
+                if user is None:
+                    user = User(
+                        email=profile["email"],
+                        display_name=profile.get("name"),
+                        avatar_url=profile.get("picture"),
+                        is_email_verified=True,  # Google ya lo verifico
+                    )
+                    db.add(user)
+                    db.flush()  # asigna user.id sin cerrar la transaccion
+
+                db.add(OAuthAccount(
+                    user_id=user.id,
+                    provider=AuthProviderEnum.google,
+                    provider_account_id=profile["sub"],
+                ))
 
         access_token = create_access_token(user.id)
         raw_refresh, refresh_hash = generate_refresh_token()
@@ -107,14 +204,27 @@ def google_callback(code: str, state: str, oauth_state: str | None = Cookie(defa
 
         db.commit()
 
+    except HTTPException:
+        db.rollback()
+        raise
     except SQLAlchemyError:
         db.rollback()
+        if link_user_id:
+            return _link_error_redirect("Error creando la sesión")
         raise HTTPException(status_code=500, detail="Error creando la sesión")
     finally:
         db.close()
 
-    redirect = RedirectResponse(f"{FRONTEND_URL}/auth/callback?access_token={access_token}")
+    callback_url = f"{FRONTEND_URL}/auth/callback?access_token={access_token}"
+    if link_user_id:
+        # Exito silencioso -- incluye la cuenta ya vinculada a si misma
+        # (idempotente) -- el panel de usuario usa esto para mostrar una
+        # confirmacion en vez de redirigir sin avisar nada, igual patron
+        # que _link_error_redirect para el caso de error.
+        callback_url += "&google_linked=true"
+    redirect = RedirectResponse(callback_url)
     redirect.delete_cookie(STATE_COOKIE)
+    redirect.delete_cookie(LINK_USER_COOKIE)
     redirect.set_cookie(
         REFRESH_COOKIE, raw_refresh,
         httponly=True, samesite="lax", secure=False,
@@ -168,11 +278,29 @@ def get_me(user: User = Depends(get_current_user)):
     """Devuelve los datos del usuario logueado -- lo usa el frontend para
     mostrar nombre/avatar sin tener que decodificar el JWT del lado del
     cliente."""
+    db = SessionLocal()
+    try:
+        # google_linked se calcula de la tabla de cuentas vinculadas, no de
+        # avatar_url -- avatar_url solo se completa cuando la cuenta se
+        # CREO via Google, y queda vacio para una cuenta preexistente a la
+        # que despues se le vincula Google (via /google/login?link=true o
+        # directo por API), lo cual la hacia aparecer como "no vinculada"
+        # aunque si lo estuviera.
+        google_linked = (
+            db.query(OAuthAccount)
+            .filter(OAuthAccount.user_id == user.id, OAuthAccount.provider == AuthProviderEnum.google)
+            .first()
+            is not None
+        )
+    finally:
+        db.close()
+
     return {
         "id": str(user.id),
         "email": user.email,
         "display_name": user.display_name,
         "avatar_url": user.avatar_url,
+        "google_linked": google_linked,
     }
 
 
@@ -453,3 +581,51 @@ def reset_password(body: ResetPasswordIn):
         db.close()
 
     return {"message": "Contraseña actualizada. Ya podés iniciar sesión."}
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str | None = None
+    new_password: str
+
+
+@router.post("/change-password")
+def change_password(body: ChangePasswordIn, user: User = Depends(get_current_user)):
+    """
+    Cambia la contraseña de un usuario YA logueado (distinto del flujo de
+    "olvidé mi contraseña", que no requiere sesión). Si la cuenta ya tiene
+    contraseña, exige la actual antes de aceptar la nueva -- una sesión
+    abierta en una compu no debería alcanzar para cambiar el acceso sin
+    saber la contraseña vigente. Si la cuenta es solo-Google (sin
+    contraseña todavía), no exige nada previo: es la forma de sumarle una
+    contraseña por primera vez a una cuenta que hasta ahora solo entraba
+    por Google.
+    """
+    if len(body.new_password) < 8:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
+
+    db = SessionLocal()
+    try:
+        db_user = db.query(User).filter(User.id == user.id).first()
+
+        if db_user.password_hash is not None:
+            if not body.current_password or not verify_password(body.current_password, db_user.password_hash):
+                raise HTTPException(status_code=401, detail="Contraseña actual incorrecta")
+
+        db_user.password_hash = hash_password(body.new_password)
+
+        # Revoca todas las sesiones activas, igual que en el reset por mail
+        # -- un cambio de contraseña debería invalidar sesiones viejas.
+        db.query(RefreshToken).filter(RefreshToken.user_id == user.id).update(
+            {"is_revoked": True}
+        )
+
+        db.commit()
+    except HTTPException:
+        raise
+    except SQLAlchemyError:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="No se pudo cambiar la contraseña")
+    finally:
+        db.close()
+
+    return {"message": "Contraseña actualizada."}

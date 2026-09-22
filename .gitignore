@@ -28,3 +28,4 @@ page_*.txt
 rsc_*.txt
 .claude/
 graphify-out/
+.impeccable/

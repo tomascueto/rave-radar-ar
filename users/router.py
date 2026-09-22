@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_user, get_db
-from database.models import EventGenre, Genre, User, UserGenrePreference
+from database.models import EventGenre, Genre, User, UserGenrePreference, UserSavedEvent
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -109,3 +109,79 @@ def set_my_genre_preferences(
         raise HTTPException(status_code=400, detail="No se pudieron guardar las preferencias")
 
     return {"saved": len(body.genre_ids)}
+
+
+class UpdateNameIn(BaseModel):
+    display_name: str
+
+
+@router.put("/me/name")
+def update_display_name(
+    body: UpdateNameIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    name = body.display_name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="El nombre no puede estar vacío")
+    if len(name) > 200:
+        raise HTTPException(status_code=400, detail="El nombre es demasiado largo")
+
+    db_user = db.query(User).filter(User.id == user.id).first()
+    db_user.display_name = name
+    db.commit()
+
+    return {"display_name": db_user.display_name}
+
+
+@router.post("/me/saved-events/{event_id}")
+def save_event(
+    event_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de evento inválido")
+
+    existing = db.query(UserSavedEvent).filter(
+        UserSavedEvent.user_id == user.id, UserSavedEvent.event_id == event_uuid
+    ).first()
+    if existing:
+        return {"saved": True}  # ya estaba guardado -- idempotente, no es error
+
+    db.add(UserSavedEvent(user_id=user.id, event_id=event_uuid))
+    db.commit()
+    return {"saved": True}
+
+
+@router.delete("/me/saved-events/{event_id}")
+def unsave_event(
+    event_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    try:
+        event_uuid = uuid.UUID(event_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de evento inválido")
+
+    db.query(UserSavedEvent).filter(
+        UserSavedEvent.user_id == user.id, UserSavedEvent.event_id == event_uuid
+    ).delete()
+    db.commit()
+    return {"saved": False}
+
+
+@router.get("/me/saved-events/ids", response_model=list[str])
+def get_saved_event_ids(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Solo los ids guardados -- para que el frontend sepa que pines/corazones
+    marcar sin tener que traer el detalle completo de cada evento. El detalle
+    completo vive en GET /api/users/me/saved-events, en api_events.py (evita
+    una importación circular, ver nota ahí)."""
+    rows = db.query(UserSavedEvent.event_id).filter(UserSavedEvent.user_id == user.id).all()
+    return [str(r[0]) for r in rows]
