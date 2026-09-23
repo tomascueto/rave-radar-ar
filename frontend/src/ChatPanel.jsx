@@ -41,6 +41,7 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, i
   ]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
   const scrollRef = useRef(null);
 
   useEffect(() => {
@@ -65,11 +66,13 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, i
         headers,
         body: JSON.stringify({
           query,
+          conversation_id: conversationId,
           ...(userLocation && { user_lat: userLocation.lat, user_lng: userLocation.lng }),
         }),
       });
       const data = await res.json();
 
+      setConversationId(data.conversation_id);
       setMessages((prev) => [
         ...prev,
         { role: "assistant", text: data.response_text, events: data.events },

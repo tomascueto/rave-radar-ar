@@ -13,9 +13,14 @@ valor de retorno opaco dentro de una función.
 Grafo: segment -> route -> (sql | qdrant | empty) -> filter_mappable ->
 rerank_by_preference -> generate
 
-Limitación conocida: el grafo es STATELESS entre turnos de una misma
-conversación — cada consulta se procesa sin ningún conocimiento de
-mensajes anteriores.
+Memoria conversacional: el grafo en si sigue siendo STATELESS por
+ejecucion (no guarda nada entre invocaciones) -- la continuidad entre
+turnos se logra pasandole el historial reciente como parte del estado de
+ENTRADA (AgentState.history), que solo usa el nodo segment. El resto del
+pipeline (route, execute, filter, rerank, generate) nunca se entera de
+que existe una conversacion: recibe una segmentacion ya resuelta y
+completa, como si el usuario hubiera escrito todo en un solo mensaje.
+Ver rag/query_segmenter.py para el detalle de como se resuelve.
 """
 
 from __future__ import annotations
@@ -36,6 +41,7 @@ from rag.router import route_from_segments
 
 class AgentState(TypedDict):
     query: str
+    history: list[dict] | None
     segmented: dict
     filters: dict
     strategy: Literal["sql", "qdrant", "empty"]
@@ -56,7 +62,7 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
     """
 
     def segment_node(state: AgentState) -> dict:
-        return {"segmented": segment_query(state["query"])}
+        return {"segmented": segment_query(state["query"], history=state.get("history"))}
 
     def route_node(state: AgentState) -> dict:
         result = route_from_segments(
@@ -155,6 +161,7 @@ def run_agent(
     model: SentenceTransformer,
     client: QdrantClient,
     query: str,
+    history: list[dict] | None = None,
     user_genre_weights: dict[str, float] | None = None,
     user_lat: float | None = None,
     user_lng: float | None = None,
@@ -163,6 +170,7 @@ def run_agent(
     agent = build_agent(db, model, client)
     return agent.invoke({
         "query": query,
+        "history": history,
         "user_genre_weights": user_genre_weights,
         "user_lat": user_lat,
         "user_lng": user_lng,

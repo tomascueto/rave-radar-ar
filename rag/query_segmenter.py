@@ -24,9 +24,28 @@ class QuerySegments(BaseModel):
     )
     free_text: str = Field(description="Descripciones de onda o estilo. Cadena vacía si no hay.")
 
-def segment_query(text: str) -> dict:
+
+def _format_history(history: list[dict]) -> str:
+    lines = []
+    for turn in history:
+        speaker = "Usuario" if turn["role"] == "user" else "Asistente"
+        lines.append(f"{speaker}: {turn['content']}")
+    return "\n".join(lines)
+
+
+def segment_query(text: str, history: list[dict] | None = None) -> dict:
+    history_block = ""
+    if history:
+        history_block = f"""
+Historial reciente de la conversación (más antiguo primero, puede estar vacío si es el primer mensaje):
+{_format_history(history)}
+
+La consulta actual puede ser una continuación o un ajuste de lo anterior — por ejemplo, "¿y alguno más barato?" después de haber preguntado por "eventos de techno este finde" significa: eventos de techno de este finde, pero además baratos. Tu segmentación debe reflejar la intención COMPLETA y VIGENTE en este momento, combinando lo que sigue aplicando del historial con lo nuevo de la consulta actual. Si la consulta actual cambia de tema (por ejemplo, pasa de techno a otro género sin relación con lo anterior), no arrastres restricciones viejas que ya no correspondan — usá tu criterio sobre qué sigue vigente y qué no, igual que lo haría una persona siguiendo la conversación.
+"""
+
     prompt = f"""Analizá esta consulta de un usuario buscando eventos de música electrónica en Argentina:
     "{text}"
+    {history_block}
     Separá la consulta SIN interpretar qué tipo de cosa es cada nombre propio.
     """
 

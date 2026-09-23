@@ -25,6 +25,7 @@ Uso:
     -> http://localhost:8000/api/chat (POST, body: {"query": "..."})
 """
 
+import uuid
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI
@@ -38,7 +39,7 @@ from sqlalchemy.orm import joinedload
 from auth.dependencies import get_current_user, get_current_user_optional
 from auth.router import router as auth_router
 from database.connection import SessionLocal
-from database.models import Event, EventGenre, User, UserSavedEvent
+from database.models import Conversation, ConversationMessage, Event, EventGenre, User, UserSavedEvent
 from rag.agent import run_agent
 from users.router import get_user_genre_weights, router as users_router
 
@@ -78,8 +79,12 @@ class MapEvent(BaseModel):
     genre_ids: list[str]
 
 
+HISTORY_WINDOW_SIZE = 6  # ultimos N mensajes (usuario + asistente combinados) que se le pasan al segmentador como contexto
+
+
 class ChatRequest(BaseModel):
     query: str
+    conversation_id: str | None = None
     user_lat: float | None = None
     user_lng: float | None = None
 
@@ -87,6 +92,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response_text: str
     events: list[MapEvent]
+    conversation_id: str
 
 
 def _extract_coords(venue) -> tuple[float | None, float | None]:
@@ -163,6 +169,52 @@ def get_map_events(date_from: datetime | None = None, date_to: datetime | None =
         db.close()
 
 
+def _resolve_conversation(db, conversation_id: str | None, user: User | None) -> Conversation:
+    """
+    Busca la conversacion por id si se paso uno valido y corresponde al
+    usuario actual (o es anonima); si no, crea una nueva. Nunca reutiliza
+    una conversacion que le pertenece a OTRO usuario logueado distinto --
+    en ese caso, arranca una nueva en silencio en vez de mezclar
+    historiales de dos personas.
+    """
+    conversation = None
+    if conversation_id:
+        try:
+            conv_uuid = uuid.UUID(conversation_id)
+            conversation = db.query(Conversation).filter(Conversation.id == conv_uuid).first()
+        except ValueError:
+            conversation = None
+
+        if conversation and conversation.user_id is not None:
+            if user is None or conversation.user_id != user.id:
+                conversation = None
+
+    if conversation is None:
+        conversation = Conversation(user_id=user.id if user else None)
+        db.add(conversation)
+        db.flush()  # asigna conversation.id sin cerrar la transaccion
+
+    return conversation
+
+
+def _load_recent_history(db, conversation_id) -> list[dict]:
+    """Ultimos HISTORY_WINDOW_SIZE mensajes de la conversacion, en orden
+    cronologico (mas viejo primero) -- es el formato que espera
+    segment_query(). Ventana acotada a proposito: el tipo de referencia
+    que necesitamos resolver ("¿y alguno mas barato?") es siempre de corto
+    alcance, no hace falta ni conviene mandarle al LLM la conversacion
+    entera."""
+    rows = (
+        db.query(ConversationMessage)
+        .filter(ConversationMessage.conversation_id == conversation_id)
+        .order_by(ConversationMessage.created_at.desc())
+        .limit(HISTORY_WINDOW_SIZE)
+        .all()
+    )
+    rows.reverse()
+    return [{"role": row.role, "content": row.content} for row in rows]
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest, user: User | None = Depends(get_current_user_optional)):
     """
@@ -173,13 +225,26 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
     OPCIONAL: sin token, o con un token invalido/vencido, el chat sigue
     funcionando igual, simplemente sin ese reordenamiento. Si algo falla,
     devuelve un mensaje de error legible en vez de un 500 crudo.
+
+    Memoria conversacional: si el cliente manda conversation_id, se
+    reutiliza esa conversacion y se le pasa al segmentador el historial
+    reciente, para que pueda resolver referencias como "¿y alguno mas
+    barato?" en el contexto de lo que se pregunto antes. Si no manda uno
+    (o el que manda no es valido / no le pertenece), se crea una
+    conversacion nueva -- el id resultante siempre viaja de vuelta en la
+    respuesta, para que el cliente lo guarde y lo reuse en el proximo
+    mensaje.
     """
     db = SessionLocal()
     try:
         user_genre_weights = get_user_genre_weights(db, user.id) if user else None
 
+        conversation = _resolve_conversation(db, request.conversation_id, user)
+        history = _load_recent_history(db, conversation.id)
+
         final_state = run_agent(
             db, _embedding_model, _qdrant_client, request.query,
+            history=history,
             user_genre_weights=user_genre_weights,
             user_lat=request.user_lat, user_lng=request.user_lng,
         )
@@ -192,17 +257,26 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
             if me is not None:
                 map_events.append(me)
 
+        db.add(ConversationMessage(conversation_id=conversation.id, role="user", content=request.query))
+        db.add(ConversationMessage(conversation_id=conversation.id, role="assistant", content=response_text))
+        db.commit()
+
         print(f"[/api/chat] query: {request.query!r} | usuario: {user.email if user else 'anonimo'} | "
+              f"conversacion: {conversation.id} | historial usado: {len(history)} mensajes | "
               f"estrategia: {final_state['strategy']} | eventos: {len(events)} | "
               f"con coordenadas: {len(map_events)}")
 
-        return ChatResponse(response_text=response_text, events=map_events)
+        return ChatResponse(
+            response_text=response_text, events=map_events, conversation_id=str(conversation.id)
+        )
 
     except Exception as exc:
+        db.rollback()
         print(f"[/api/chat] ERROR procesando {request.query!r}: {exc}")
         return ChatResponse(
             response_text="Uy, tuve un problema procesando tu consulta. Probá de nuevo en un momento.",
             events=[],
+            conversation_id=request.conversation_id or "",
         )
     finally:
         db.close()
