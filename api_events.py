@@ -28,7 +28,7 @@ Uso:
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from geoalchemy2.shape import to_shape
 from pydantic import BaseModel
@@ -75,6 +75,9 @@ class MapEvent(BaseModel):
     lng: float | None
     ticket_url: str | None
     flyer_url: str | None
+    min_price: float | None
+    max_price: float | None
+    currency: str | None
     genres: list[str]
     genre_ids: list[str]
 
@@ -131,13 +134,32 @@ def _event_to_map_event(ev: Event) -> MapEvent | None:
         lng=lng,
         ticket_url=ev.ticket_url,
         flyer_url=ev.flyer_url,
+        min_price=float(ev.min_price) if ev.min_price is not None else None,
+        max_price=float(ev.max_price) if ev.max_price is not None else None,
+        currency=ev.currency,
         genres=[eg.genre.name for eg in ev.genres if eg.genre],
         genre_ids=[str(eg.genre_id) for eg in ev.genres],
     )
 
 
 @app.get("/api/events/map", response_model=list[MapEvent])
-def get_map_events(date_from: datetime | None = None, date_to: datetime | None = None):
+def get_map_events(
+    response: Response,
+    date_from: datetime | None = None,
+    date_to: datetime | None = None,
+    max_price: float | None = None,
+):
+    """
+    Nota sobre max_price: a septiembre 2026, solo ~37% de los eventos
+    activos tienen precio scrapeado con exito (205 de 559) -- la mayoria
+    de los sitios fuente no siempre lo exponen de forma parseable. Por
+    eso, cuando este filtro esta activo, excluye genuinamente los eventos
+    sin precio informado (no podemos afirmar que entran en presupuesto
+    si no sabemos su precio), pero informa cuantos quedaron afuera por
+    ESE motivo especifico via el header X-Excluded-No-Price, para que el
+    frontend pueda distinguirle al usuario "no hay nada mas barato" de
+    "hay cosas que capaz entran, pero no sabemos su precio".
+    """
     db = SessionLocal()
     try:
         query = db.query(Event).options(
@@ -150,6 +172,14 @@ def get_map_events(date_from: datetime | None = None, date_to: datetime | None =
         if date_to:
             query = query.filter(Event.date_from < date_to)
 
+        excluded_no_price = 0
+        if max_price is not None:
+            excluded_no_price = query.filter(Event.min_price.is_(None)).count()
+            # alcanza con que la tarifa MAS BARATA del evento entre en el
+            # tope -- un evento con entrada general accesible no se oculta
+            # solo porque ademas tenga un palco caro.
+            query = query.filter(Event.min_price.isnot(None), Event.min_price <= max_price)
+
         events = query.all()
 
         result = []
@@ -161,8 +191,12 @@ def get_map_events(date_from: datetime | None = None, date_to: datetime | None =
                 continue
             result.append(me)
 
+        response.headers["X-Excluded-No-Price"] = str(excluded_no_price)
+
         print(f"[/api/events/map] rango: {lower_bound} -> {date_to or 'sin tope'} | "
-              f"encontrados: {len(events)} | devueltos: {len(result)} | descartados: {skipped}")
+              f"tope de precio: {max_price or 'sin filtro'} | "
+              f"encontrados: {len(events)} | devueltos: {len(result)} | descartados: {skipped} | "
+              f"excluidos por falta de precio: {excluded_no_price}")
 
         return result
     finally:
@@ -238,6 +272,9 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
     db = SessionLocal()
     try:
         user_genre_weights = get_user_genre_weights(db, user.id) if user else None
+        user_preferred_city_id = (
+            str(user.preferred_city_id) if user and user.preferred_city_id else None
+        )
 
         conversation = _resolve_conversation(db, request.conversation_id, user)
         history = _load_recent_history(db, conversation.id)
@@ -246,6 +283,7 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
             db, _embedding_model, _qdrant_client, request.query,
             history=history,
             user_genre_weights=user_genre_weights,
+            user_preferred_city_id=user_preferred_city_id,
             user_lat=request.user_lat, user_lng=request.user_lng,
         )
         events = final_state["events"]

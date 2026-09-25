@@ -12,6 +12,45 @@
         ],
         "createdAt": "2026-09-20T04:32:29.247Z",
         "reason": "FilterBar's sliding active-filter thumb is a single small position:absolute decorative element (not in normal document flow), so animating its width/left cannot cascade into a page-wide reflow -- the practical cost is negligible. A transform-only (scaleX) rewrite was tried and rejected: scaling a rounded-full pill horizontally distorts its end-caps into ellipses instead of semicircles, a worse visual defect than the theoretical layout cost here."
+      },
+      {
+        "rule": "design-system-font",
+        "value": "ibm plex mono",
+        "createdAt": "2026-09-24T16:18:03.001Z",
+        "reason": "matches sibling artifact rag_pipeline_architecture.html; standalone technical diagram, not the DESIGN.md product-UI type system"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "ibm plex sans",
+        "createdAt": "2026-09-24T16:18:03.139Z",
+        "reason": "matches sibling artifact rag_pipeline_architecture.html; standalone technical diagram, not the DESIGN.md product-UI type system"
+      },
+      {
+        "rule": "low-contrast",
+        "value": "*",
+        "files": [
+          "app_architecture.html"
+        ],
+        "createdAt": "2026-09-24T16:18:17.121Z",
+        "reason": "false positives: checker pairs dark-mode-only tokens against the light surface literal (e.g. #9aa5b6/#94a0b4 vs #ffffff) and a phantom #000000-on-dark that appears nowhere in the CSS; verified same-theme pairings (light muted on light surface ~6:1, dark muted on dark surface ~6.5:1, dark struct on dark surface ~6.9:1) all pass AA"
+      },
+      {
+        "rule": "tiny-text",
+        "value": "*",
+        "files": [
+          "app_architecture.html"
+        ],
+        "createdAt": "2026-09-24T16:18:17.265Z",
+        "reason": "11.5px is the uppercase kicker/eyebrow micro-label size, identical to the pattern already shipped in sibling rag_pipeline_architecture.html's #detail-panel .kicker span.cat; not body copy"
+      },
+      {
+        "rule": "all-caps-body",
+        "value": "*",
+        "files": [
+          "app_architecture.html"
+        ],
+        "createdAt": "2026-09-24T16:20:16.750Z",
+        "reason": "uppercase only on the short eyebrow line and the kicker category label (<=30 chars each, e.g. 'rave-radar-ar — vista de sistema', 'Determinístico · Python / SQL'), same pattern as sibling rag_pipeline_architecture.html; not long passages"
       }
     ]
   }

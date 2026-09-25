@@ -1,0 +1,566 @@
+<meta charset="UTF-8">
+<title>Arquitectura Rave Radar AR</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root{
+    --bg:#F2F4F7; --surface:#FFFFFF; --surface-2:#E7EBF0;
+    --ink:#161A22; --ink-muted:#5B6472; --border:#C7CED8;
+    --det:#0E7C86; --det-bg:#E3F3F1;
+    --ia:#7C3AED; --ia-bg:#EFE7FB;
+    --struct:#475467; --struct-bg:#E5E8ED;
+    --data:#A66A00; --data-bg:#F5E8CC;
+    --fe:#B23A6B; --fe-bg:#F5E1EC;
+    --select:#2563EB;
+    --edge:#8A94A3;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#10141C; --surface:#171C26; --surface-2:#1F2530;
+      --ink:#E7EAF0; --ink-muted:#94A0B4; --border:#2B3341;
+      --det:#3FD0BA; --det-bg:rgba(63,208,186,0.14);
+      --ia:#B199F7; --ia-bg:rgba(177,153,247,0.16);
+      --struct:#9AA5B6; --struct-bg:rgba(154,165,182,0.12);
+      --data:#E3B34D; --data-bg:rgba(227,179,77,0.16);
+      --fe:#F093B0; --fe-bg:rgba(240,147,176,0.16);
+      --select:#60A5FA;
+      --edge:#5B6472;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#10141C; --surface:#171C26; --surface-2:#1F2530;
+    --ink:#E7EAF0; --ink-muted:#94A0B4; --border:#2B3341;
+    --det:#3FD0BA; --det-bg:rgba(63,208,186,0.14);
+    --ia:#B199F7; --ia-bg:rgba(177,153,247,0.16);
+    --struct:#9AA5B6; --struct-bg:rgba(154,165,182,0.12);
+    --data:#E3B34D; --data-bg:rgba(227,179,77,0.16);
+    --fe:#F093B0; --fe-bg:rgba(240,147,176,0.16);
+    --select:#60A5FA;
+    --edge:#5B6472;
+  }
+
+  *{ box-sizing:border-box; }
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:'IBM Plex Sans', system-ui, sans-serif;
+    padding-inline:20px; padding-block:28px 48px;
+    display:flex; flex-direction:column; gap:22px;
+  }
+  code, .mono{ font-family:'IBM Plex Mono', ui-monospace, monospace; }
+
+  header{ max-width:960px; }
+  header .eyebrow{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; letter-spacing:.08em;
+    text-transform:uppercase; color:var(--struct); margin:0 0 8px;
+  }
+  h1{ font-size:26px; line-height:1.25; margin:0 0 8px; text-wrap:balance; font-weight:700; }
+  header p{ margin:0; color:var(--ink-muted); font-size:14.5px; line-height:1.6; max-width:74ch; }
+  header code{ background:var(--surface-2); padding:1px 6px; border-radius:4px; font-size:.92em; }
+  header a{ color:var(--select); text-decoration:none; border-bottom:1px solid currentColor; }
+  header a:hover{ opacity:.8; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
+  .legend button{
+    font-family:'IBM Plex Sans', sans-serif; font-size:12.5px; font-weight:600;
+    border:1px solid var(--border); background:var(--surface); color:var(--ink);
+    border-radius:20px; padding:6px 14px 6px 10px; cursor:pointer;
+    display:flex; align-items:center; gap:7px; transition:border-color .15s, background .15s;
+  }
+  .legend button .dot{ width:9px; height:9px; border-radius:50%; flex:none; }
+  .legend button[aria-pressed="true"]{ border-color:var(--select); background:var(--surface-2); }
+  .legend .dot.all{ background:var(--struct); }
+  .legend .dot.det{ background:var(--det); }
+  .legend .dot.ia{ background:var(--ia); }
+  .legend .dot.struct{ background:var(--struct); }
+  .legend .dot.data{ background:var(--data); }
+  .legend .dot.fe{ background:var(--fe); }
+
+  main{ display:flex; flex-direction:column; gap:22px; max-width:1400px; }
+
+  .diagram-card{
+    background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:18px 18px 14px;
+  }
+  .diagram-scroll{ overflow-x:auto; }
+  figure.diagram{ margin:0; }
+  figure.diagram svg{ display:block; width:100%; min-width:1040px; height:auto; }
+  figcaption{ margin-top:10px; font-size:12.5px; color:var(--ink-muted); line-height:1.5; }
+
+  .node rect.box{ fill:var(--surface); stroke:var(--border); stroke-width:1.4; transition:stroke .15s, filter .15s; }
+  .node.cat-det rect.box{ fill:var(--det-bg); }
+  .node.cat-ia rect.box{ fill:var(--ia-bg); }
+  .node.cat-struct rect.box{ fill:var(--struct-bg); }
+  .node.cat-data rect.box{ fill:var(--data-bg); }
+  .node.cat-fe rect.box{ fill:var(--fe-bg); }
+  .node{ cursor:pointer; }
+  .node:focus{ outline:none; }
+  .node:focus rect.box, .node:hover rect.box{ stroke:var(--select); stroke-width:2.2; }
+  .node.selected rect.box{ stroke:var(--select); stroke-width:2.6; }
+  .node.dimmed{ opacity:.3; }
+  text{ fill:var(--ink); font-family:'IBM Plex Sans', sans-serif; }
+  .node .title{ font-family:'IBM Plex Mono', monospace; font-weight:600; font-size:12.5px; }
+  .node .file{ fill:var(--ink-muted); font-size:9px; font-family:'IBM Plex Mono', monospace; }
+  .node .detail{ fill:var(--ink-muted); font-size:9.5px; }
+  .edge{ stroke:var(--edge); stroke-width:1.6; fill:none; }
+  .edge.bypass{ stroke-dasharray:5 4; }
+  .edge-label{ fill:var(--ink-muted); font-size:10px; font-family:'IBM Plex Mono', monospace; }
+  .frame{ fill:none; stroke:var(--border); stroke-dasharray:5 5; stroke-width:1.4; }
+  .frame-label{ fill:var(--ink-muted); font-size:11.5px; font-family:'IBM Plex Mono', monospace; font-weight:600; }
+
+  .lower{ display:flex; gap:18px; flex-wrap:wrap; align-items:stretch; }
+  #detail-panel{
+    flex:1 1 420px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:20px 22px; min-height:220px;
+  }
+  #detail-panel .kicker{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  #detail-panel .kicker .dot{ width:10px; height:10px; border-radius:50%; }
+  #detail-panel .kicker .dot.det{ background:var(--det); }
+  #detail-panel .kicker .dot.ia{ background:var(--ia); }
+  #detail-panel .kicker .dot.struct{ background:var(--struct); }
+  #detail-panel .kicker .dot.data{ background:var(--data); }
+  #detail-panel .kicker .dot.fe{ background:var(--fe); }
+  #detail-panel .kicker span.cat{ font-size:11.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-muted); }
+  #detail-panel h2{ font-family:'IBM Plex Mono', monospace; font-size:19px; margin:0 0 4px; }
+  #detail-panel .file{ font-family:'IBM Plex Mono', monospace; font-size:12.5px; color:var(--ink-muted); margin:0 0 14px; }
+  #detail-panel ul{ margin:0 0 14px; padding-left:18px; font-size:13.5px; line-height:1.6; color:var(--ink); }
+  #detail-panel ul li{ margin-bottom:6px; }
+  #detail-panel .writes{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color:var(--ink-muted);
+    border-top:1px dashed var(--border); padding-top:10px;
+  }
+  #detail-panel .writes b{ color:var(--ink); font-weight:600; }
+  #detail-panel .hint{ color:var(--ink-muted); font-size:14px; line-height:1.6; }
+
+  aside#layer-ref{
+    flex:1 1 300px; background:var(--surface); border:1px solid var(--border); border-radius:14px;
+    padding:20px 22px;
+  }
+  aside#layer-ref h3{ font-size:13px; margin:0 0 4px; }
+  aside#layer-ref .file{ font-family:'IBM Plex Mono', monospace; font-size:11.5px; color:var(--ink-muted); margin:0 0 12px; }
+  aside#layer-ref dl{ margin:0 0 14px; display:grid; grid-template-columns:auto 1fr; gap:7px 12px; font-size:12.5px; }
+  aside#layer-ref dt{ font-family:'IBM Plex Mono', monospace; color:var(--ink); font-weight:600; white-space:nowrap; }
+  aside#layer-ref dd{ margin:0; color:var(--ink-muted); }
+  aside#layer-ref .note{ font-size:12.5px; color:var(--ink-muted); line-height:1.55; border-top:1px dashed var(--border); padding-top:12px; }
+
+  @media (max-width:640px){
+    h1{ font-size:22px; }
+    #detail-panel, aside#layer-ref{ flex-basis:100%; }
+  }
+</style>
+
+<header>
+  <p class="eyebrow">rave-radar-ar &mdash; vista de sistema</p>
+  <h1>De los scrapers al mapa: cómo funciona toda la app</h1>
+  <p>
+    Cinco capas, de la ingesta de datos al navegador: qué escribe qué, qué es determinístico
+    y qué depende de un LLM. El Agente RAG está resumido acá &mdash; el detalle de sus 8 nodos
+    de <code>LangGraph</code> está en <a href="rag_pipeline_architecture.html">rag_pipeline_architecture.html</a>.
+    Hacé click en cualquier nodo para ver su detalle.
+  </p>
+  <div class="legend" role="group" aria-label="Filtrar por capa">
+    <button type="button" data-filter="all" aria-pressed="true"><span class="dot all"></span>Todos</button>
+    <button type="button" data-filter="struct" aria-pressed="false"><span class="dot struct"></span>Ingesta</button>
+    <button type="button" data-filter="data" aria-pressed="false"><span class="dot data"></span>Almacenamiento</button>
+    <button type="button" data-filter="det" aria-pressed="false"><span class="dot det"></span>Determinístico</button>
+    <button type="button" data-filter="ia" aria-pressed="false"><span class="dot ia"></span>IA generativa</button>
+    <button type="button" data-filter="fe" aria-pressed="false"><span class="dot fe"></span>Frontend</button>
+  </div>
+</header>
+
+<main>
+  <div class="diagram-card">
+    <div class="diagram-scroll">
+      <figure class="diagram">
+        <svg viewBox="0 0 1200 1464" role="img"
+             aria-label="Arquitectura de rave-radar-ar en cinco capas apiladas: Ingesta (scrapers, offline) escribe en Almacenamiento (PostgreSQL+PostGIS y Qdrant); Almacenamiento es leído por el Agente RAG (segment, route+execute, generate); el Agente RAG devuelve la respuesta al Backend API (FastAPI: api_events.py, auth/router.py, users/router.py); el Backend API responde al Frontend (React). Una flecha punteada aparte conecta el Backend API directo con PostgreSQL, saltando al Agente RAG, para auth, el mapa y las preferencias.">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"></path>
+            </marker>
+          </defs>
+
+          <!-- ===== frames ===== -->
+          <rect class="frame" x="60" y="60" width="1100" height="262" rx="16"></rect>
+          <text class="frame-label" x="76" y="84">Ingesta &middot; scraper/ (offline, manual)</text>
+
+          <rect class="frame" x="60" y="392" width="1100" height="200" rx="16"></rect>
+          <text class="frame-label" x="76" y="416">Almacenamiento</text>
+
+          <rect class="frame" x="60" y="662" width="1100" height="180" rx="16"></rect>
+          <text class="frame-label" x="76" y="686">Agente RAG &middot; rag/agent.py (LangGraph StateGraph, resumido)</text>
+
+          <rect class="frame" x="60" y="912" width="1100" height="200" rx="16"></rect>
+          <text class="frame-label" x="76" y="936">Backend API &middot; FastAPI</text>
+
+          <rect class="frame" x="60" y="1182" width="1100" height="262" rx="16"></rect>
+          <text class="frame-label" x="76" y="1206">Frontend &middot; React + Vite (frontend/src/)</text>
+
+          <!-- ===== edges ===== -->
+          <path class="edge" d="M250,322 L250,432" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="262" y="382">INSERT/UPDATE eventos, venues, cities</text>
+
+          <path class="edge" d="M520,302 L790,432" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="640" y="378">embeddings</text>
+
+          <path class="edge" d="M250,572 L520,702" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="290" y="655">SQL + PostGIS ST_DWithin</text>
+
+          <path class="edge" d="M790,572 L520,702" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="660" y="655">búsqueda vectorial</text>
+
+          <path class="edge" d="M240,748 L440,748" marker-end="url(#arrow)"></path>
+          <path class="edge" d="M600,748 L800,748" marker-end="url(#arrow)"></path>
+
+          <path class="edge" d="M880,842 L610,952" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="700" y="905">response_text + events (run_agent)</text>
+
+          <path class="edge" d="M610,1112 L610,1182" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="610" y="1150" text-anchor="middle">fetch: /api/events/map &middot; /api/chat &middot; /api/auth/* &middot; /api/users/*</text>
+
+          <path class="edge bypass" d="M80,1022 L40,1022 L40,502 L80,502" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="30" y="770" transform="rotate(-90 30 770)" text-anchor="middle">lecturas/escrituras directas &mdash; auth, /api/events/map, preferencias</text>
+
+          <!-- ===== nodes: Ingesta ===== -->
+          <g class="node cat-struct" data-node="ing_jodify" tabindex="0" role="button" aria-label="Nodo Scraper Jodify">
+            <rect class="box" x="80" y="100" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="126">Scraper Jodify</text>
+            <text class="file" x="96" y="144">sources/jodify.py</text>
+            <text class="file" x="96" y="155">+ load_jodify.py</text>
+            <text class="detail" x="96" y="177">RSC de Next.js</text>
+          </g>
+
+          <g class="node cat-struct" data-node="ing_venues" tabindex="0" role="button" aria-label="Nodo Venues Jodify">
+            <rect class="box" x="260" y="100" width="160" height="92" rx="10"></rect>
+            <text class="title" x="276" y="126">Venues Jodify</text>
+            <text class="file" x="276" y="144">jodify_venues.py</text>
+            <text class="detail" x="276" y="177">extrae venue del HTML</text>
+          </g>
+
+          <g class="node cat-struct" data-node="ing_geocode" tabindex="0" role="button" aria-label="Nodo Geocodificación">
+            <rect class="box" x="440" y="100" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="126">Geocodificación</text>
+            <text class="file" x="456" y="144">geocode_venues.py</text>
+            <text class="detail" x="456" y="177">dirección &rarr; lat/lng</text>
+          </g>
+
+          <g class="node cat-struct" data-node="ing_geocode_llm" tabindex="0" role="button" aria-label="Nodo Geocodificación LLM">
+            <rect class="box" x="620" y="100" width="160" height="92" rx="10"></rect>
+            <text class="title" x="636" y="126">Geocod. LLM</text>
+            <text class="file" x="636" y="144">geocode_llm_</text>
+            <text class="file" x="636" y="155">second_pass.py</text>
+            <text class="detail" x="636" y="177">2&ordf; pasada</text>
+          </g>
+
+          <g class="node cat-struct" data-node="ing_dedup" tabindex="0" role="button" aria-label="Nodo Dedup venues">
+            <rect class="box" x="80" y="210" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="236">Dedup venues</text>
+            <text class="file" x="96" y="254">detect_duplicate_</text>
+            <text class="file" x="96" y="265">venues.py</text>
+            <text class="detail" x="96" y="287">detecta duplicados</text>
+          </g>
+
+          <g class="node cat-struct" data-node="ing_cities" tabindex="0" role="button" aria-label="Nodo Carga ciudades">
+            <rect class="box" x="260" y="210" width="160" height="92" rx="10"></rect>
+            <text class="title" x="276" y="236">Carga ciudades</text>
+            <text class="file" x="276" y="254">load_cities.py</text>
+            <text class="detail" x="276" y="287">resuelve city_id</text>
+          </g>
+
+          <g class="node cat-struct" data-node="ing_index" tabindex="0" role="button" aria-label="Nodo Indexa Qdrant">
+            <rect class="box" x="440" y="210" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="236">Indexa Qdrant</text>
+            <text class="file" x="456" y="254">index_events_</text>
+            <text class="file" x="456" y="265">qdrant.py</text>
+            <text class="detail" x="456" y="287">embeddings (e5-large)</text>
+          </g>
+
+          <!-- ===== nodes: Almacenamiento ===== -->
+          <g class="node cat-data" data-node="db_postgres" tabindex="0" role="button" aria-label="Nodo PostgreSQL + PostGIS">
+            <rect class="box" x="80" y="432" width="340" height="140" rx="10"></rect>
+            <text class="title" x="98" y="461">PostgreSQL + PostGIS</text>
+            <text class="file" x="98" y="481">database/models.py &middot; connection.py &middot; alembic/</text>
+            <text class="detail" x="98" y="505">14 tablas: User, Event, Venue, DJ, Genre,</text>
+            <text class="detail" x="98" y="518">City, Conversation, RefreshToken&hellip;</text>
+            <text class="detail" x="98" y="541">ST_DWithin(geography) &middot; fuente de verdad</text>
+          </g>
+
+          <g class="node cat-data" data-node="db_qdrant" tabindex="0" role="button" aria-label="Nodo Qdrant">
+            <rect class="box" x="620" y="432" width="340" height="140" rx="10"></rect>
+            <text class="title" x="638" y="461">Qdrant</text>
+            <text class="file" x="638" y="481">vector store</text>
+            <text class="detail" x="638" y="505">índice semántico de eventos</text>
+            <text class="detail" x="638" y="527">repoblado por index_events_qdrant.py</text>
+          </g>
+
+          <!-- ===== nodes: Agente RAG ===== -->
+          <g class="node cat-ia" data-node="agent_segment" tabindex="0" role="button" aria-label="Nodo segment">
+            <rect class="box" x="80" y="702" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="728">segment</text>
+            <text class="file" x="96" y="746">query_segmenter.py</text>
+            <text class="detail" x="96" y="769">IA &middot; Gemini</text>
+          </g>
+
+          <g class="node cat-det" data-node="agent_route_exec" tabindex="0" role="button" aria-label="Nodo route + execute">
+            <rect class="box" x="440" y="702" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="728">route+execute</text>
+            <text class="file" x="456" y="746">router.py, query_</text>
+            <text class="detail" x="456" y="769">SQL/PostGIS o Qdrant</text>
+          </g>
+
+          <g class="node cat-ia" data-node="agent_generate" tabindex="0" role="button" aria-label="Nodo generate">
+            <rect class="box" x="800" y="702" width="160" height="92" rx="10"></rect>
+            <text class="title" x="816" y="728">generate</text>
+            <text class="file" x="816" y="746">response_generator.py</text>
+            <text class="detail" x="816" y="769">IA &middot; Gemini</text>
+          </g>
+
+          <text class="edge-label" x="76" y="822">Versión resumida &mdash; ver los 8 nodos completos (incluye filter_mappable y rerank_by_preference) en rag_pipeline_architecture.html</text>
+
+          <!-- ===== nodes: Backend API ===== -->
+          <g class="node cat-det" data-node="api_events" tabindex="0" role="button" aria-label="Nodo api_events.py">
+            <rect class="box" x="80" y="952" width="340" height="140" rx="10"></rect>
+            <text class="title" x="98" y="981">api_events.py</text>
+            <text class="file" x="98" y="1001">FastAPI app principal</text>
+            <text class="detail" x="98" y="1025">GET /api/events/map</text>
+            <text class="detail" x="98" y="1038">POST /api/chat &rarr; run_agent()</text>
+          </g>
+
+          <g class="node cat-det" data-node="api_auth" tabindex="0" role="button" aria-label="Nodo auth/router.py">
+            <rect class="box" x="440" y="952" width="340" height="140" rx="10"></rect>
+            <text class="title" x="458" y="981">auth/router.py</text>
+            <text class="file" x="458" y="1001">+ jwt, password, google_oauth, email</text>
+            <text class="detail" x="458" y="1025">/api/auth/* &middot; login, registro,</text>
+            <text class="detail" x="458" y="1038">Google OAuth, reset de contraseña</text>
+          </g>
+
+          <g class="node cat-det" data-node="api_users" tabindex="0" role="button" aria-label="Nodo users/router.py">
+            <rect class="box" x="800" y="952" width="340" height="140" rx="10"></rect>
+            <text class="title" x="818" y="981">users/router.py</text>
+            <text class="file" x="818" y="1001">users/router.py</text>
+            <text class="detail" x="818" y="1025">/api/users/* &middot; preferencias,</text>
+            <text class="detail" x="818" y="1038">eventos guardados, perfil</text>
+          </g>
+
+          <!-- ===== nodes: Frontend ===== -->
+          <g class="node cat-fe" data-node="fe_app" tabindex="0" role="button" aria-label="Nodo App.jsx">
+            <rect class="box" x="80" y="1222" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="1248">App.jsx</text>
+            <text class="file" x="96" y="1266">+ main.jsx</text>
+            <text class="detail" x="96" y="1289">estado raíz</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_navbar" tabindex="0" role="button" aria-label="Nodo Navbar.jsx">
+            <rect class="box" x="260" y="1222" width="160" height="92" rx="10"></rect>
+            <text class="title" x="276" y="1248">Navbar.jsx</text>
+            <text class="file" x="276" y="1266">frontend/src/</text>
+            <text class="detail" x="276" y="1289">sesión persistente</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_auth" tabindex="0" role="button" aria-label="Nodo AuthModal.jsx">
+            <rect class="box" x="440" y="1222" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="1248">AuthModal.jsx</text>
+            <text class="file" x="456" y="1266">+ ResetPasswordPage</text>
+            <text class="detail" x="456" y="1289">login, registro, Google</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_survey" tabindex="0" role="button" aria-label="Nodo GenreSurvey.jsx">
+            <rect class="box" x="620" y="1222" width="160" height="92" rx="10"></rect>
+            <text class="title" x="636" y="1248">GenreSurvey.jsx</text>
+            <text class="file" x="636" y="1266">frontend/src/</text>
+            <text class="detail" x="636" y="1289">onboarding + edición</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_map" tabindex="0" role="button" aria-label="Nodo Map.jsx">
+            <rect class="box" x="80" y="1332" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="1358">Map.jsx</text>
+            <text class="file" x="96" y="1376">frontend/src/</text>
+            <text class="detail" x="96" y="1399">Leaflet, clustering</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_chat" tabindex="0" role="button" aria-label="Nodo ChatPanel.jsx">
+            <rect class="box" x="260" y="1332" width="160" height="92" rx="10"></rect>
+            <text class="title" x="276" y="1358">ChatPanel.jsx</text>
+            <text class="file" x="276" y="1376">frontend/src/</text>
+            <text class="detail" x="276" y="1399">chat flotante</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_userpanel" tabindex="0" role="button" aria-label="Nodo UserPanel.jsx">
+            <rect class="box" x="440" y="1332" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="1358">UserPanel.jsx</text>
+            <text class="file" x="456" y="1376">frontend/src/</text>
+            <text class="detail" x="456" y="1399">perfil y preferencias</text>
+          </g>
+        </svg>
+        <figcaption>
+          Vista de sistema de <code>rave-radar-ar</code>: cinco capas desde la ingesta de datos hasta el navegador.
+          Las flechas indican qué escribe o lee qué; la única que no sigue el orden general es la lateral punteada
+          (Backend API &rarr; PostgreSQL directo, sin pasar por el Agente RAG, para auth/mapa/preferencias).
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="lower">
+    <section id="detail-panel" aria-live="polite">
+      <p class="hint">
+        Seleccioná un nodo del diagrama para ver qué archivo lo implementa, qué hace, y qué lee o escribe.
+      </p>
+    </section>
+
+    <aside id="layer-ref">
+      <h3>Cómo leer el diagrama</h3>
+      <p class="file">Cinco capas, en el mismo orden que dibuja el README</p>
+      <dl>
+        <dt>Ingesta</dt><dd>scripts de scraper/, se corren a mano</dd>
+        <dt>Almacenamiento</dt><dd>Postgres+PostGIS (relacional) y Qdrant (vectorial)</dd>
+        <dt>Agente RAG</dt><dd>resumido &mdash; detalle completo en el otro diagrama</dd>
+        <dt>Backend API</dt><dd>FastAPI, un solo proceso (api_events.py)</dd>
+        <dt>Frontend</dt><dd>React + Vite, solo habla con el Backend API</dd>
+      </dl>
+      <p class="note">
+        El Backend API también lee/escribe PostgreSQL directamente para auth, preferencias y el mapa,
+        sin pasar por el Agente RAG &mdash; esa es la flecha punteada de la izquierda.
+      </p>
+    </aside>
+  </div>
+</main>
+
+<script>
+(function(){
+  var NODES = {
+    ing_jodify: { cat:'struct', title:'Scraper Jodify', file:'scraper/sources/jodify.py &middot; scraper/load_jodify.py', bullets:[
+      'Extrae el JSON embebido de React Server Components (RSC) que Next.js incrusta en el HTML de jodify.com.ar, en vez de parsear HTML visible.',
+      'Recorre las Server Actions paginadas de Jodify y guarda los eventos crudos en events_raw.json / event_ids.json antes de cargarlos.',
+      'load_jodify.py hace commit evento por evento, así un fallo puntual no descarta el resto del batch.'
+    ], writes:'escribe en <b>PostgreSQL</b> (events, venues)' },
+    ing_venues: { cat:'struct', title:'Venues Jodify', file:'scraper/sources/jodify_venues.py', bullets:[
+      'Extrae nombre y dirección del venue desde el HTML de cada evento.',
+      'Alimenta la tabla venues antes de la geocodificación.'
+    ], writes:'escribe en <b>PostgreSQL</b> (venues)' },
+    ing_geocode: { cat:'struct', title:'Geocodificación', file:'scraper/geocode_venues.py', bullets:[
+      'Convierte la dirección de cada venue en coordenadas (lat/lng).'
+    ], writes:'actualiza <b>venues.geom</b>' },
+    ing_geocode_llm: { cat:'struct', title:'Geocod. 2&ordf; pasada (LLM)', file:'scraper/geocode_llm_second_pass.py', bullets:[
+      'Segunda pasada para direcciones que la geocodificación regular no pudo resolver.',
+      'Usa un LLM para interpretar direcciones ambiguas (ciudad y país mezclados en el mismo campo de texto).'
+    ], writes:'actualiza <b>venues.geom</b>' },
+    ing_dedup: { cat:'struct', title:'Dedup de venues', file:'scraper/detect_duplicate_venues.py', bullets:[
+      'Detecta venues potencialmente duplicados (mismo lugar cargado con nombre o dirección ligeramente distinta) para revisión manual.'
+    ], writes:'no escribe &mdash; genera un reporte' },
+    ing_cities: { cat:'struct', title:'Carga de ciudades', file:'scraper/load_cities.py', bullets:[
+      'Carga la tabla cities y resuelve venues.city_id, reemplazando el city_name de texto libre que traía Jodify.'
+    ], writes:'escribe <b>cities</b>, actualiza <b>venues.city_id</b>' },
+    ing_index: { cat:'struct', title:'Indexación Qdrant', file:'scraper/index_events_qdrant.py', bullets:[
+      'Genera el embedding de cada evento con SentenceTransformer (multilingual-e5-large) y arma un payload filtrable.',
+      'Es el único paso de ingesta que escribe en Qdrant en vez de Postgres &mdash; el puente entre la fuente de verdad relacional y el índice semántico.'
+    ], writes:'escribe en <b>Qdrant</b>' },
+    db_postgres: { cat:'data', title:'PostgreSQL + PostGIS', file:'database/models.py &middot; connection.py &middot; alembic/', bullets:[
+      'Fuente de verdad relacional: User, Event, Venue, DJ, Genre, City, EventGenre, EventDJ, UserSavedEvent, UserGenrePreference, Conversation/ConversationMessage, RefreshToken, OAuthAccount y los tokens de verificación/reset.',
+      'PostGIS permite ST_DWithin(geography) para filtrar eventos por distancia real desde la posición del usuario, no una comparación ingenua de lat/lng.',
+      'Migraciones versionadas con Alembic; env.py ignora explícitamente las tablas internas de PostGIS/Tiger que no son del proyecto.'
+    ], writes:'leído/escrito por casi todas las capas' },
+    db_qdrant: { cat:'data', title:'Qdrant', file:'vector store', bullets:[
+      'Índice vectorial de eventos, consultado por execute_qdrant_node cuando la búsqueda es semántica en vez de estructurada.',
+      'Se repuebla con scraper/index_events_qdrant.py. Postgres sigue siendo la fuente de verdad de is_active, porque el payload de Qdrant no se reactualiza solo después de indexar.'
+    ], writes:'leído por el Agente RAG (búsqueda vectorial)' },
+    agent_segment: { cat:'ia', title:'segment', file:'rag/query_segmenter.py', bullets:[
+      'Gemini 2.5 Flash con salida JSON estricta (schema Pydantic) extrae entidades candidatas, fecha, precio y si la ubicación pedida es la propia del usuario.',
+      'Único nodo de esta capa donde el LLM decide algo genuinamente lingüístico.'
+    ], writes:'ver detalle completo en rag_pipeline_architecture.html' },
+    agent_route_exec: { cat:'det', title:'route + execute', file:'rag/router.py &middot; query_executor.py &middot; entity_resolver.py', bullets:[
+      '100% determinístico. Resuelve entidades contra Postgres con similitud de trigramas (pg_trgm) y decide la estrategia: sql, qdrant o empty.',
+      'Ejecuta la búsqueda elegida: SQL+PostGIS, vectorial en Qdrant, o corta directo si la ubicación no se pudo resolver.'
+    ], writes:'lee PostgreSQL y/o Qdrant' },
+    agent_generate: { cat:'ia', title:'generate', file:'rag/response_generator.py', bullets:[
+      'Gemini redacta la respuesta final en español rioplatense, con reglas anti-alucinación y un tope de 5 eventos visibles para el modelo.'
+    ], writes:'devuelve response_text + events a api_events.py' },
+    api_events: { cat:'det', title:'api_events.py', file:'FastAPI app principal', bullets:[
+      'GET /api/events/map devuelve eventos con coordenadas para el mapa, con auth opcional para personalizar por afinidad de género.',
+      'POST /api/chat invoca run_agent() (rag/agent.py) y devuelve texto + eventos recomendados en el mismo formato que el mapa.',
+      'Carga el modelo de embeddings y el cliente de Qdrant una sola vez al arrancar el servidor, no en cada request.'
+    ], writes:'llama al Agente RAG, lee PostgreSQL' },
+    api_auth: { cat:'det', title:'auth/router.py', file:'+ dependencies.py, jwt_utils.py, password_utils.py, google_oauth.py, email_utils.py', bullets:[
+      '/api/auth/*: registro y login por contraseña, login con Google OAuth, refresh token en cookie httponly, logout.',
+      'Verificación de email y forgot/reset/change password; email_utils.py manda los correos transaccionales vía SendGrid.'
+    ], writes:'lee/escribe PostgreSQL (User, RefreshToken, OAuthAccount, tokens)' },
+    api_users: { cat:'det', title:'users/router.py', file:'users/router.py', bullets:[
+      '/api/users/*: catálogo de géneros, lectura y guardado de preferencias (genre-weights), eventos guardados, nombre de perfil.',
+      'get_user_genre_weights() es lo que consume rerank_by_preference_node del agente para reordenar resultados por afinidad.'
+    ], writes:'lee/escribe PostgreSQL (UserGenrePreference, UserSavedEvent)' },
+    fe_app: { cat:'fe', title:'App.jsx', file:'+ main.jsx (entry point)', bullets:[
+      'Componente raíz: mantiene el estado de sesión, chat, mapa y pesos de género, y orquesta el resto de los componentes.'
+    ], writes:'fetch a /api/events/map y /api/auth/me al montar' },
+    fe_navbar: { cat:'fe', title:'Navbar.jsx', file:'frontend/src/Navbar.jsx', bullets:[
+      'Muestra el estado de sesión (logueado o no) y dispara el AuthModal para login/logout.'
+    ], writes:'' },
+    fe_auth: { cat:'fe', title:'AuthModal.jsx', file:'+ ResetPasswordPage.jsx', bullets:[
+      'Formularios de login, registro, forgot/reset password y login con Google, todos en el mismo modal reusable.',
+      'ResetPasswordPage.jsx es la página standalone que abre el link del email de reset.'
+    ], writes:'POST /api/auth/*' },
+    fe_survey: { cat:'fe', title:'GenreSurvey.jsx', file:'frontend/src/GenreSurvey.jsx', bullets:[
+      'Encuesta de géneros favoritos para el onboarding, reutilizada también para editar preferencias desde el panel de usuario (precarga las selecciones actuales).'
+    ], writes:'PUT /api/users/me/genres' },
+    fe_map: { cat:'fe', title:'Map.jsx', file:'frontend/src/Map.jsx', bullets:[
+      'Mapa Leaflet con clustering de pines; color naranja/verde según afinidad con los géneros del usuario, opacidad según precisión de la geolocalización.'
+    ], writes:'consume /api/events/map' },
+    fe_chat: { cat:'fe', title:'ChatPanel.jsx', file:'frontend/src/ChatPanel.jsx', bullets:[
+      'Chat flotante y colapsable; envía la consulta en lenguaje natural a POST /api/chat y pinta los eventos devueltos sobre el mapa.'
+    ], writes:'POST /api/chat' },
+    fe_userpanel: { cat:'fe', title:'UserPanel.jsx', file:'frontend/src/UserPanel.jsx', bullets:[
+      'Panel de perfil: nombre, preferencias de género (reusa GenreSurvey) y eventos guardados.'
+    ], writes:'GET/PUT /api/users/me/*' }
+  };
+
+  var svg = document.querySelector('svg');
+  var panel = document.getElementById('detail-panel');
+  var nodeEls = Array.prototype.slice.call(svg.querySelectorAll('.node'));
+  var legendBtns = Array.prototype.slice.call(document.querySelectorAll('.legend button'));
+
+  function catLabel(cat){
+    if(cat === 'ia') return 'IA generativa &middot; Gemini';
+    if(cat === 'det') return 'Determinístico &middot; Python / SQL';
+    if(cat === 'data') return 'Almacenamiento';
+    if(cat === 'fe') return 'Frontend &middot; React';
+    return 'Ingesta';
+  }
+
+  function renderPanel(id){
+    var d = NODES[id];
+    if(!d) return;
+    panel.innerHTML =
+      '<div class="kicker"><span class="dot ' + d.cat + '"></span>' +
+      '<span class="cat">' + catLabel(d.cat) + '</span></div>' +
+      '<h2>' + d.title + '</h2>' +
+      '<p class="file">' + d.file + '</p>' +
+      '<ul>' + d.bullets.map(function(b){ return '<li>' + b + '</li>'; }).join('') + '</ul>' +
+      (d.writes ? '<p class="writes">' + d.writes + '</p>' : '');
+  }
+
+  function selectNode(el){
+    nodeEls.forEach(function(n){ n.classList.remove('selected'); });
+    el.classList.add('selected');
+    renderPanel(el.getAttribute('data-node'));
+  }
+
+  nodeEls.forEach(function(el){
+    el.addEventListener('click', function(){ selectNode(el); });
+    el.addEventListener('keydown', function(ev){
+      if(ev.key === 'Enter' || ev.key === ' '){ ev.preventDefault(); selectNode(el); }
+    });
+  });
+
+  function applyFilter(filter){
+    legendBtns.forEach(function(b){
+      b.setAttribute('aria-pressed', b.getAttribute('data-filter') === filter ? 'true' : 'false');
+    });
+    nodeEls.forEach(function(el){
+      if(filter === 'all'){ el.classList.remove('dimmed'); return; }
+      var isMatch = el.classList.contains('cat-' + filter);
+      el.classList.toggle('dimmed', !isMatch);
+    });
+  }
+
+  legendBtns.forEach(function(b){
+    b.addEventListener('click', function(){ applyFilter(b.getAttribute('data-filter')); });
+  });
+})();
+</script>

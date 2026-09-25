@@ -174,7 +174,7 @@ class User(Base):
     avatar_url = Column(String(500))
     is_email_verified = Column(Boolean, default=False)
     price_range_max = Column(Integer)
-    preferred_city = Column(String(100))
+    preferred_city_id = Column(UUID(as_uuid=True), ForeignKey("cities.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     role = Column(String(20), default="user")
     terms_accepted_at = Column(DateTime(timezone=True))
@@ -187,6 +187,7 @@ class User(Base):
     genre_preferences = relationship("UserGenrePreference", back_populates="user")
     event_history = relationship("UserEventHistory", back_populates="user")
     saved_events = relationship("UserSavedEvent", back_populates="user")
+    preferred_city = relationship("City")
 
 
 class OAuthAccount(Base):

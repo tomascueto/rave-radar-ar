@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from auth.dependencies import get_current_user, get_db
-from database.models import EventGenre, Genre, User, UserGenrePreference, UserSavedEvent
+from database.models import City, Event, EventGenre, Genre, User, UserGenrePreference, UserSavedEvent
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
@@ -185,3 +185,60 @@ def get_saved_event_ids(
     una importación circular, ver nota ahí)."""
     rows = db.query(UserSavedEvent.event_id).filter(UserSavedEvent.user_id == user.id).all()
     return [str(r[0]) for r in rows]
+
+
+class CityOut(BaseModel):
+    id: str
+    name: str
+    event_count: int
+
+
+@router.get("/cities/catalog", response_model=list[CityOut])
+def list_cities(db: Session = Depends(get_db)):
+    """
+    Catalogo de ciudades, ordenado por cuantos eventos tiene cada una --
+    mismo criterio que /genres/catalog, para que el selector de "ciudad
+    preferida" muestre primero las ciudades con escena real en vez de una
+    lista alfabetica con muchas ciudades sin apenas eventos. Publico, no
+    requiere sesion.
+    """
+    rows = (
+        db.query(City, func.count(Event.id).label("event_count"))
+        .outerjoin(Event, Event.city_id == City.id)
+        .group_by(City.id)
+        .order_by(func.count(Event.id).desc())
+        .all()
+    )
+    return [CityOut(id=str(city.id), name=city.name, event_count=count) for city, count in rows]
+
+
+class UpdatePreferredCityIn(BaseModel):
+    city_id: str | None = None  # null para borrar la preferencia
+
+
+@router.put("/me/preferred-city")
+def update_preferred_city(
+    body: UpdatePreferredCityIn,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if body.city_id is None:
+        db_user = db.query(User).filter(User.id == user.id).first()
+        db_user.preferred_city_id = None
+        db.commit()
+        return {"preferred_city_id": None}
+
+    try:
+        city_uuid = uuid.UUID(body.city_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="ID de ciudad inválido")
+
+    city = db.query(City).filter(City.id == city_uuid).first()
+    if city is None:
+        raise HTTPException(status_code=404, detail="Ciudad no encontrada")
+
+    db_user = db.query(User).filter(User.id == user.id).first()
+    db_user.preferred_city_id = city_uuid
+    db.commit()
+
+    return {"preferred_city_id": str(city_uuid)}

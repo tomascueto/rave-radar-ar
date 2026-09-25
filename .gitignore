@@ -29,3 +29,5 @@ rsc_*.txt
 .claude/
 graphify-out/
 .impeccable/
+
+.graphify/
