@@ -25,6 +25,7 @@ Ver rag/query_segmenter.py para el detalle de como se resuelve.
 
 from __future__ import annotations
 
+import time
 from typing import TypedDict, Literal
 
 from langgraph.graph import StateGraph, END
@@ -63,13 +64,18 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
     """
 
     def segment_node(state: AgentState) -> dict:
-        return {"segmented": segment_query(state["query"], history=state.get("history"))}
+        t0 = time.perf_counter()
+        result = {"segmented": segment_query(state["query"], history=state.get("history"))}
+        print(f"[timing] segment_node (Gemini): {time.perf_counter() - t0:.2f}s")
+        return result
 
     def route_node(state: AgentState) -> dict:
+        t0 = time.perf_counter()
         result = route_from_segments(
             db, state["segmented"],
             user_lat=state.get("user_lat"), user_lng=state.get("user_lng"),
         )
+        print(f"[timing] route_node (local, sin LLM): {time.perf_counter() - t0:.2f}s")
         return {
             "filters": result.filters,
             "strategy": result.strategy,
@@ -77,10 +83,15 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
         }
 
     def execute_sql_node(state: AgentState) -> dict:
-        return {"events": execute_sql(db, state["filters"])}
+        t0 = time.perf_counter()
+        events = execute_sql(db, state["filters"])
+        print(f"[timing] execute_sql_node (Postgres local): {time.perf_counter() - t0:.2f}s")
+        return {"events": events}
 
     def execute_qdrant_node(state: AgentState) -> dict:
+        t0 = time.perf_counter()
         events = execute_qdrant(db, model, client, state["filters"], state["semantic_text"])
+        print(f"[timing] execute_qdrant_node (embedding + Qdrant, local): {time.perf_counter() - t0:.2f}s")
         return {"events": events}
 
     def execute_empty_node(state: AgentState) -> dict:
@@ -172,10 +183,12 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
         return {"events": reranked}
 
     def generate_node(state: AgentState) -> dict:
+        t0 = time.perf_counter()
         response_text = generate_response(
             state["query"], state["events"],
             unresolved_expressions=state["filters"].get("unresolved_expressions"),
         )
+        print(f"[timing] generate_node (Gemini): {time.perf_counter() - t0:.2f}s")
         return {"response_text": response_text}
 
     def pick_strategy(state: AgentState) -> str:
@@ -220,8 +233,9 @@ def run_agent(
     user_lng: float | None = None,
 ) -> AgentState:
     """Punto de entrada de conveniencia: construye, ejecuta y devuelve el estado final."""
+    t0 = time.perf_counter()
     agent = build_agent(db, model, client)
-    return agent.invoke({
+    result = agent.invoke({
         "query": query,
         "history": history,
         "user_genre_weights": user_genre_weights,
@@ -229,3 +243,5 @@ def run_agent(
         "user_lat": user_lat,
         "user_lng": user_lng,
     })
+    print(f"[timing] TOTAL run_agent: {time.perf_counter() - t0:.2f}s")
+    return result

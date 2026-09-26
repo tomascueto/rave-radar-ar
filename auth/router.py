@@ -7,7 +7,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import SQLAlchemyError
@@ -27,6 +29,12 @@ from database.models import (
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+# Backend en memoria (sin Redis) -- alcanza para un solo servidor. Si el
+# despliegue algun dia pasa a ser multi-instancia, este backend deja de
+# ser confiable (cada instancia contaria por separado) y haria falta
+# migrar a storage_uri="redis://...".
+limiter = Limiter(key_func=get_remote_address)
 
 FRONTEND_URL = "http://localhost:5173"
 BACKEND_URL = "http://localhost:8000"
@@ -420,7 +428,8 @@ class LoginIn(BaseModel):
 
 
 @router.post("/login")
-def login(body: LoginIn):
+@limiter.limit("5/minute")
+def login(request: Request, body: LoginIn):
     """
     Login por email y contraseña. Emite el mismo tipo de sesión que el
     login con Google (access token + refresh cookie httponly) -- /refresh
@@ -476,7 +485,8 @@ class ForgotPasswordIn(BaseModel):
 
 
 @router.post("/forgot-password")
-def forgot_password(body: ForgotPasswordIn):
+@limiter.limit("3/hour")
+def forgot_password(request: Request, body: ForgotPasswordIn):
     """
     Siempre devuelve la misma respuesta, exista o no una cuenta con ese
     email -- evita que la respuesta del API permita confirmar qué emails
@@ -589,7 +599,8 @@ class ChangePasswordIn(BaseModel):
 
 
 @router.post("/change-password")
-def change_password(body: ChangePasswordIn, user: User = Depends(get_current_user)):
+@limiter.limit("5/minute")
+def change_password(request: Request, body: ChangePasswordIn, user: User = Depends(get_current_user)):
     """
     Cambia la contraseña de un usuario YA logueado (distinto del flujo de
     "olvidé mi contraseña", que no requiere sesión). Si la cuenta ya tiene

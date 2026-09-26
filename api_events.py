@@ -37,13 +37,22 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import joinedload
 
 from auth.dependencies import get_current_user, get_current_user_optional
-from auth.router import router as auth_router
+from auth.router import limiter as auth_limiter, router as auth_router
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from database.connection import SessionLocal
 from database.models import Conversation, ConversationMessage, Event, EventGenre, User, UserSavedEvent
 from rag.agent import run_agent
 from users.router import get_user_genre_weights, router as users_router
 
 app = FastAPI(title="Rave Radar AR - API")
+
+# El limiter en si se define en auth/router.py (donde viven los endpoints
+# que lo usan) -- aca solo se registra con la app, como pide slowapi.
+app.state.limiter = auth_limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
