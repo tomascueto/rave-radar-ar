@@ -591,7 +591,12 @@ function makeClusterIcon(cluster) {
 // Exportado para reusarse tal cual en el acceso directo del Navbar.
 export function HeartIcon({ filled, className }) {
   return (
-    <svg viewBox="0 0 24 24" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg
+      viewBox="0 0 24 24"
+      className={className}
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
       <path
         d="M12 20.5s-7.5-4.6-9.8-9.1C.6 8.1 1.7 4.8 5 3.7c2.1-.7 4.3.1 5.5 2 .2.3.5.3.7 0 1.2-1.9 3.4-2.7 5.5-2 3.3 1.1 4.4 4.4 2.8 7.7-2.3 4.5-9.8 9.1-9.8 9.1z"
         fill={filled ? "currentColor" : "none"}
@@ -625,9 +630,10 @@ function FlyerPlaceholderIcon({ className }) {
 // Exportado para reusarse tal cual en la lista de "Eventos guardados" del
 // panel de usuario -- onRemove es opcional a proposito: solo esa lista lo
 // pasa, así que en el mapa/chat (que nunca lo pasan) el boton ni existe.
-// isSaved/onToggleSave manejan el corazon: onToggleSave llega undefined
-// cuando no hay sesion iniciada (el corazon se muestra pero deshabilitado,
-// con tooltip), nunca por eleccion de quien renderiza la tarjeta.
+// isSaved/onToggleSave manejan el corazon -- guardar nunca pide sesion
+// (ver useSavedEvents.js: sin cuenta, guarda en localStorage), asi que
+// onToggleSave solo llega undefined cuando no hay ni siquiera un evento
+// resuelto todavia (ver EventDetailOverlay mas abajo), no por sesion.
 export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave }) {
   // Generos del evento que tambien estan entre las preferencias guardadas
   // del usuario -- se resaltan distinto (ver .flyer-chip-match). genres y
@@ -687,20 +693,8 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
             onToggleSave?.();
           }}
           disabled={!onToggleSave}
-          title={
-            !onToggleSave
-              ? "Iniciá sesión para guardar eventos"
-              : isSaved
-              ? "Sacar de guardados"
-              : "Guardar evento"
-          }
-          aria-label={
-            !onToggleSave
-              ? "Iniciá sesión para guardar eventos"
-              : isSaved
-              ? "Sacar de guardados"
-              : "Guardar evento"
-          }
+          title={isSaved ? "Sacar de guardados" : "Guardar evento"}
+          aria-label={isSaved ? "Sacar de guardados" : "Guardar evento"}
           className={`trial-heart-btn absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
             isSaved ? "is-saved" : ""
           }`}
@@ -1115,10 +1109,8 @@ export default function Map({
         onPrev={handleOverlayPrev}
         onClose={handleOverlayClose}
         genreWeights={genreWeights}
-        isSaved={!!(savedEventIds && displayedEvent && savedEventIds.has(displayedEvent.id))}
-        onToggleSave={
-          savedEventIds && displayedEvent ? () => onToggleSaved(displayedEvent.id) : undefined
-        }
+        isSaved={!!(displayedEvent && savedEventIds.has(displayedEvent.id))}
+        onToggleSave={displayedEvent ? () => onToggleSaved(displayedEvent.id) : undefined}
       />
     </div>
   );

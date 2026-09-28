@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useModalA11y } from "./useModalA11y";
 
 const API_BASE = "http://localhost:8000";
 
@@ -321,12 +322,23 @@ export default function UserPanel({
   accessToken, currentUser, initialTab, linkError, linkSuccess, onClose, onUserUpdate,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || "perfil");
+  const { dialogRef, dialogProps, backdropProps } = useModalA11y({
+    onClose,
+    titleId: "user-panel-title",
+  });
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="flyer-modal flyer-pop-enter rounded-2xl max-w-2xl w-full h-[600px] max-h-[85vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      {...backdropProps}
+    >
+      <div
+        ref={dialogRef}
+        {...dialogProps}
+        className="flyer-modal flyer-pop-enter rounded-2xl max-w-2xl w-full h-[600px] max-h-[85vh] flex flex-col"
+      >
         <div className="p-5 flyer-modal-border border-b flex items-center justify-between flex-shrink-0">
-          <h2 className="flyer-sans font-bold text-lg" style={{ color: "var(--flyer-paper)" }}>
+          <h2 id="user-panel-title" className="flyer-sans font-bold text-lg" style={{ color: "var(--flyer-paper)" }}>
             Tu cuenta
           </h2>
           <button

@@ -1,8 +1,13 @@
 import { useEffect, useState } from "react";
+import { useModalA11y } from "./useModalA11y";
 
 const API_BASE = "http://localhost:8000";
 
 export default function GenreSurvey({ accessToken, onDone }) {
+  const { dialogRef, dialogProps, backdropProps } = useModalA11y({
+    onClose: onDone,
+    titleId: "genre-survey-title",
+  });
   const [genres, setGenres] = useState([]);
   const [selected, setSelected] = useState(new Set());
   const [loading, setLoading] = useState(true);
@@ -61,10 +66,17 @@ export default function GenreSurvey({ accessToken, onDone }) {
   }
 
   return (
-    <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="flyer-modal flyer-pop-enter rounded-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+    <div
+      className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+      {...backdropProps}
+    >
+      <div
+        ref={dialogRef}
+        {...dialogProps}
+        className="flyer-modal flyer-pop-enter rounded-2xl max-w-lg w-full max-h-[80vh] flex flex-col"
+      >
         <div className="p-5 flyer-modal-border border-b">
-          <h2 className="flyer-sans font-bold text-lg" style={{ color: "var(--flyer-paper)" }}>
+          <h2 id="genre-survey-title" className="flyer-sans font-bold text-lg" style={{ color: "var(--flyer-paper)" }}>
             ¿Qué onda te gusta?
           </h2>
           <p className="flyer-sans flyer-text-muted text-sm mt-1">

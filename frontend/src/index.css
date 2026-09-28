@@ -1098,6 +1098,15 @@
   color: #86efac;
 }
 
+/* Aviso neutral/informativo -- mismo violeta de marca que .trial-chip,
+   para el aviso de "estas eventos guardados son de invitado" en
+   SavedEvents (no es un error ni una confirmacion de que algo salio
+   bien, solo informa). */
+.flyer-banner-info {
+  background: rgba(124, 58, 237, 0.15);
+  color: #c4b5fd;
+}
+
 .flyer-ghost-btn:focus-visible,
 .flyer-btn-solid:focus-visible,
 .flyer-navbar-cta:focus-visible,

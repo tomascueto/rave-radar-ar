@@ -24,19 +24,45 @@ function LoginIcon({ className }) {
   );
 }
 
-function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, onOpenSavedEvents, onLogout }) {
+// Compartido entre invitado y logueado -- "Eventos guardados" esta
+// siempre disponible (ver useSavedEvents.js), asi que el acceso tambien.
+// El numero visible es aria-hidden (mero refuerzo visual); el conteo
+// real para lectores de pantalla vive en el span sr-only con
+// aria-live="polite" de abajo, que se anuncia solo con que cambie el
+// texto, sin depender de que el boton tenga foco en ese momento.
+function SavedEventsButton({ savedCount, onOpenSavedEvents }) {
+  return (
+    <button
+      onClick={onOpenSavedEvents}
+      title="Eventos guardados"
+      aria-label="Eventos guardados"
+      className="trial-ghost-btn relative w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+    >
+      <HeartIcon filled={false} className="w-4 h-4" />
+      {savedCount > 0 && (
+        <span
+          aria-hidden="true"
+          className="flyer-sans absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold leading-4 text-center"
+          style={{ background: "var(--flyer-pink)", color: "var(--flyer-ink)" }}
+        >
+          {savedCount > 99 ? "99+" : savedCount}
+        </span>
+      )}
+      <span className="sr-only" aria-live="polite">
+        {savedCount} {savedCount === 1 ? "evento guardado" : "eventos guardados"}
+      </span>
+    </button>
+  );
+}
+
+function AuthBar({
+  currentUser, savedCount, onOpenAuth, onOpenPreferences, onOpenUserPanel, onOpenSavedEvents, onLogout,
+}) {
   if (currentUser) {
     const initial = (currentUser.display_name || currentUser.email || "?").trim().charAt(0).toUpperCase();
     return (
       <div className="flex items-center gap-1 sm:gap-2">
-        <button
-          onClick={onOpenSavedEvents}
-          title="Eventos guardados"
-          aria-label="Eventos guardados"
-          className="trial-ghost-btn w-9 h-9 rounded-full flex items-center justify-center transition-colors"
-        >
-          <HeartIcon filled={false} className="w-4 h-4" />
-        </button>
+        <SavedEventsButton savedCount={savedCount} onOpenSavedEvents={onOpenSavedEvents} />
         <button
           onClick={onOpenUserPanel}
           title="Tu cuenta"
@@ -87,22 +113,25 @@ function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, 
     );
   }
   return (
-    // Reusa .flyer-cta (el mismo botón que "Comprar entrada" en EventCard,
-    // ver Map.jsx) en vez de duplicar sus valores -- mismo corte de
-    // esquina, color, tipografia y estados hover/active/focus. Solo el
-    // padding se ajusta (mas chico) para que entre bien en el navbar.
-    <button
-      onClick={onOpenAuth}
-      className="flyer-cta flyer-sans inline-flex items-center gap-2 uppercase tracking-wide text-sm font-bold px-4 py-2.5 transition-colors"
-    >
-      <LoginIcon className="w-4 h-4" />
-      Iniciar sesión
-    </button>
+    <div className="flex items-center gap-1 sm:gap-2">
+      <SavedEventsButton savedCount={savedCount} onOpenSavedEvents={onOpenSavedEvents} />
+      {/* Reusa .flyer-cta (el mismo botón que "Comprar entrada" en EventCard,
+          ver Map.jsx) en vez de duplicar sus valores -- mismo corte de
+          esquina, color, tipografia y estados hover/active/focus. Solo el
+          padding se ajusta (mas chico) para que entre bien en el navbar. */}
+      <button
+        onClick={onOpenAuth}
+        className="flyer-cta flyer-sans inline-flex items-center gap-2 uppercase tracking-wide text-sm font-bold px-4 py-2.5 transition-colors"
+      >
+        <LoginIcon className="w-4 h-4" />
+        Iniciar sesión
+      </button>
+    </div>
   );
 }
 
 export default function Navbar({
-  currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, onOpenSavedEvents, onLogout,
+  currentUser, savedCount, onOpenAuth, onOpenPreferences, onOpenUserPanel, onOpenSavedEvents, onLogout,
 }) {
   return (
     <header className="h-14 flex-shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 trial-navbar">
@@ -111,6 +140,7 @@ export default function Navbar({
       </h1>
       <AuthBar
         currentUser={currentUser}
+        savedCount={savedCount}
         onOpenAuth={onOpenAuth}
         onOpenPreferences={onOpenPreferences}
         onOpenUserPanel={onOpenUserPanel}

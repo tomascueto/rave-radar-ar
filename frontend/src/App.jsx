@@ -10,6 +10,7 @@ import UserPanel from "./UserPanel";
 import SavedEvents from "./SavedEvents";
 import ResetPasswordPage from "./ResetPasswordPage";
 import LandingMore from "./LandingMore";
+import { useSavedEvents } from "./useSavedEvents";
 
 const API_BASE = "http://localhost:8000";
 
@@ -193,9 +194,20 @@ function App() {
   const [userLocation, setUserLocation] = useState(null);
   const [locatingUser, setLocatingUser] = useState(false);
   const [genreWeights, setGenreWeights] = useState({});
-  // null = sin sesion (el corazon de guardar ni se habilita) -- distinto
-  // de un Set vacio, que es "logueado pero sin nada guardado todavia".
-  const [savedEventIds, setSavedEventIds] = useState(null);
+  // Unica fuente de verdad de "eventos guardados" -- funciona con o sin
+  // sesion (ver useSavedEvents.js). isBroadView es la vista mas amplia
+  // posible del mapa (sin filtro angosto, sin resultados de chat encima):
+  // solo ahi es seguro podar del storage de invitado un ID que no aparece
+  // en `events`, porque recien ahi la ausencia significa "ya no existe"
+  // y no "esta vista no lo incluye".
+  const isBroadView = mode === "browse" && filter === "todos";
+  const {
+    savedIds,
+    toggle: toggleSavedEvent,
+    savedEvents,
+    loading: savedEventsLoading,
+    isGuest,
+  } = useSavedEvents({ accessToken, events, isBroadView, eventsLoading: loading });
 
 
   function handleEnter() {
@@ -360,39 +372,6 @@ function App() {
     fetchGenreWeights();
   }, [accessToken]);
 
-  useEffect(() => {
-    if (!accessToken) {
-      setSavedEventIds(null);
-      return;
-    }
-    fetch(`${API_BASE}/api/users/me/saved-events/ids`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((ids) => setSavedEventIds(new Set(ids)))
-      .catch(() => setSavedEventIds(new Set()));
-  }, [accessToken]);
-
-  // Unico lugar que sabe guardar/sacar un evento -- el corazon de
-  // EventCard (mapa, chat, o la lista de guardados del panel) siempre
-  // llama a esto mismo, asi el Set queda consistente sin importar desde
-  // donde se disparo el click ni hace falta refrescar nada del server.
-  // Optimista: cambia el Set al toque, sin esperar la respuesta.
-  function toggleSavedEvent(eventId) {
-    if (!accessToken) return;
-    const wasSaved = savedEventIds?.has(eventId);
-    setSavedEventIds((prev) => {
-      const next = new Set(prev || []);
-      if (wasSaved) next.delete(eventId);
-      else next.add(eventId);
-      return next;
-    });
-    fetch(`${API_BASE}/api/users/me/saved-events/${eventId}`, {
-      method: wasSaved ? "DELETE" : "POST",
-      headers: { Authorization: `Bearer ${accessToken}` },
-    }).catch(() => {});
-  }
-
   function handleAuthSuccess(token) {
     setAccessToken(token);
     setShowAuthModal(false);
@@ -465,6 +444,7 @@ function App() {
     <div className="flex flex-col h-screen w-screen">
       <Navbar
         currentUser={currentUser}
+        savedCount={savedIds.size}
         onOpenAuth={() => setShowAuthModal(true)}
         onOpenPreferences={() => setShowSurvey(true)}
         onOpenUserPanel={() => {
@@ -486,7 +466,7 @@ function App() {
           locatingUser={locatingUser}
           genreWeights={genreWeights}
           onCloseCarousel={fetchMapEvents}
-          savedEventIds={savedEventIds}
+          savedEventIds={savedIds}
           onToggleSaved={toggleSavedEvent}
           mode={mode}
           activeIndex={activeIndex}
@@ -533,12 +513,17 @@ function App() {
         />
       )}
 
-      {showSavedEvents && currentUser && (
+      {showSavedEvents && (
         <SavedEvents
-          accessToken={accessToken}
           genreWeights={genreWeights}
-          savedEventIds={savedEventIds}
+          savedEvents={savedEvents}
+          loading={savedEventsLoading}
+          isGuest={isGuest}
           onToggleSaved={toggleSavedEvent}
+          onOpenAuth={() => {
+            setShowSavedEvents(false);
+            setShowAuthModal(true);
+          }}
           onClose={() => setShowSavedEvents(false)}
         />
       )}
