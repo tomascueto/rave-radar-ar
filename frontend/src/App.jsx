@@ -7,7 +7,9 @@ import Navbar from "./Navbar";
 import GenreSurvey from "./GenreSurvey";
 import AuthModal from "./AuthModal";
 import UserPanel from "./UserPanel";
+import SavedEvents from "./SavedEvents";
 import ResetPasswordPage from "./ResetPasswordPage";
+import LandingMore from "./LandingMore";
 
 const API_BASE = "http://localhost:8000";
 
@@ -26,58 +28,119 @@ function buildMapApiUrl(filterKey) {
 // encuadre: el proveedor de tiles sigue siendo el mismo TILE_URL de Map.jsx.
 const LANDING_MAP_CENTER = [-34.5951, -58.4436];
 
+// Mismo lenguaje visual que .flyer-pin de Map.jsx (violeta de marca, borde
+// blanco, sombra, entrada con flyer-pin-enter) -- el mapa de la landing es
+// el mismo mapa real de la app, asi que el pin tiene que sentirse como el
+// mismo objeto, no como un ícono decorativo aparte. Va como overlay CSS fijo
+// en una esquina, no como Marker de Leaflet centrado en el mapa: el centro
+// del mapa cae siempre detras del bloque de texto (centrado en pantalla),
+// asi que un pin ahi quedaria tapado -- una esquina es la unica zona que el
+// contenido centrado nunca ocupa, en mobile o desktop.
+function LandingPin() {
+  return (
+    <div
+      className="absolute top-8 right-6 sm:top-12 sm:right-12"
+      aria-hidden="true"
+    >
+      <div
+        className="flyer-pin flyer-pin-enter"
+        style={{
+          width: 34,
+          height: 34,
+          "--pin-final-opacity": 1,
+          background: "var(--flyer-violet)",
+          border: "3px solid white",
+          borderRadius: "50%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          animationDelay: "520ms",
+        }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" style={{ width: "48%", height: "48%" }}>
+          <rect x="6" y="10" width="3" height="8" rx="1" fill="white" fillOpacity="0.85" />
+          <rect x="10.5" y="5" width="3" height="13" rx="1" fill="white" fillOpacity="0.85" />
+          <rect x="15" y="8" width="3" height="10" rx="1" fill="white" fillOpacity="0.85" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 function LandingPage({ onEnter }) {
   return (
-    <div className="fixed inset-0 z-[3000] flyer-landing overflow-hidden flex items-center justify-center">
-      <div className="absolute inset-0 flyer-map pointer-events-none">
-        <MapContainer
-          center={LANDING_MAP_CENTER}
-          zoom={16}
-          zoomControl={false}
-          dragging={false}
-          scrollWheelZoom={false}
-          doubleClickZoom={false}
-          touchZoom={false}
-          boxZoom={false}
-          keyboard={false}
-          className="h-full w-full flyer-map-layer"
-        >
-          <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
-        </MapContainer>
-      </div>
+    <div className="flyer-landing">
+      <div className="relative h-screen overflow-hidden flex items-center justify-center">
+        <div className="absolute inset-0 flyer-map pointer-events-none">
+          <MapContainer
+            center={LANDING_MAP_CENTER}
+            zoom={16}
+            zoomControl={false}
+            dragging={false}
+            scrollWheelZoom={false}
+            doubleClickZoom={false}
+            touchZoom={false}
+            boxZoom={false}
+            keyboard={false}
+            className="h-full w-full flyer-map-layer"
+          >
+            <TileLayer url={TILE_URL} attribution={TILE_ATTRIBUTION} />
+          </MapContainer>
+        </div>
 
-      <div className="absolute inset-0 flyer-duotone" aria-hidden="true" />
-      <div className="absolute inset-0 flyer-diagonal-cut" aria-hidden="true" />
-      <div className="absolute inset-0 flyer-scrim" aria-hidden="true" />
-      <div className="absolute inset-0 flyer-content-scrim" aria-hidden="true" />
-      <div className="absolute inset-0 flyer-halftone flyer-halftone-live" aria-hidden="true" />
-      <div className="flyer-scanbar pointer-events-none" aria-hidden="true" />
+        <div className="absolute inset-0 flyer-duotone" aria-hidden="true" />
+        <div className="absolute inset-0 flyer-diagonal-cut" aria-hidden="true" />
+        <div className="absolute inset-0 flyer-scrim" aria-hidden="true" />
+        <div className="absolute inset-0 flyer-content-scrim" aria-hidden="true" />
+        <div className="absolute inset-0 flyer-halftone flyer-halftone-live" aria-hidden="true" />
+        <div className="flyer-scanbar pointer-events-none" aria-hidden="true" />
+        <div className="absolute inset-0 flyer-hero-fade pointer-events-none" aria-hidden="true" />
 
-      <div className="relative z-10 flex flex-col items-center gap-5 px-6 max-w-md text-center">
-        <h1
-          className="flyer-title uppercase leading-[0.92]"
-          style={{ fontSize: "clamp(2.75rem, 9vw, 6rem)", textWrap: "balance" }}
-        >
-          <span style={{ color: "var(--flyer-pink)" }}>¡</span>
-          Bienvenido a Rave Radar AR
-          <span style={{ color: "var(--flyer-pink)" }}>!</span>
-        </h1>
+        <LandingPin />
 
-        <div className="flyer-rule w-24" />
+        <div className="relative z-10 flex flex-col items-center gap-5 px-6 max-w-md text-center">
+          <h1
+            className="flyer-title uppercase leading-[0.92]"
+            style={{ fontSize: "clamp(2.75rem, 9vw, 6rem)", textWrap: "balance" }}
+          >
+            <span style={{ color: "var(--flyer-pink)" }}>¡</span>
+            Bienvenido a Rave Radar AR
+            <span style={{ color: "var(--flyer-pink)" }}>!</span>
+          </h1>
 
-        <p className="flyer-mono flyer-tagline uppercase tracking-[0.08em] text-sm">
-          Mapa en vivo + recomendación por IA
-        </p>
+          <div className="flyer-rule w-24" />
+
+          <p className="flyer-mono flyer-tagline uppercase tracking-[0.08em] text-sm">
+            Mapa en vivo + recomendación por IA
+          </p>
+
+          <button
+            onClick={onEnter}
+            className="flyer-cta flyer-cta-bloom mt-2 flyer-mono uppercase tracking-[0.06em] font-bold text-base px-10 py-4 transition-colors"
+          >
+            Encontrá tu fiesta
+            <span className="block flyer-mono normal-case tracking-normal text-[10px] font-normal opacity-90 mt-1">
+              Esta noche · Argentina
+            </span>
+          </button>
+        </div>
 
         <button
-          onClick={onEnter}
-          className="flyer-cta flyer-cta-bloom mt-2 flyer-mono uppercase tracking-[0.06em] font-bold text-base px-10 py-4 transition-colors"
+          onClick={() => {
+            const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+            document.getElementById("landing-more")?.scrollIntoView({ behavior: reduced ? "auto" : "smooth" });
+          }}
+          aria-label="Ver más"
+          className="flyer-scroll-cue absolute bottom-6 left-1/2 -translate-x-1/2 z-10"
         >
-          Encontrá tu fiesta
-          <span className="block flyer-mono normal-case tracking-normal text-[10px] font-normal opacity-90 mt-1">
-            Esta noche · Argentina
-          </span>
+          <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 9l7 7 7-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
+      </div>
+
+      <div id="landing-more">
+        <LandingMore onEnter={onEnter} />
       </div>
     </div>
   );
@@ -100,6 +163,7 @@ function App() {
   const [showSurvey, setShowSurvey] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
+  const [showSavedEvents, setShowSavedEvents] = useState(false);
   const [userPanelInitialTab, setUserPanelInitialTab] = useState("perfil");
   const [googleLinkError, setGoogleLinkError] = useState(null);
   const [googleLinkSuccess, setGoogleLinkSuccess] = useState(false);
@@ -344,6 +408,7 @@ function App() {
           setUserPanelInitialTab("perfil");
           setShowUserPanel(true);
         }}
+        onOpenSavedEvents={() => setShowSavedEvents(true)}
         onLogout={handleLogout}
       />
       <div className="flex-1 relative overflow-hidden">
@@ -392,18 +457,25 @@ function App() {
         <UserPanel
           accessToken={accessToken}
           currentUser={currentUser}
-          genreWeights={genreWeights}
           initialTab={userPanelInitialTab}
           linkError={googleLinkError}
           linkSuccess={googleLinkSuccess}
-          savedEventIds={savedEventIds}
-          onToggleSaved={toggleSavedEvent}
           onUserUpdate={handleUserUpdate}
           onClose={() => {
             setShowUserPanel(false);
             setGoogleLinkError(null);
             setGoogleLinkSuccess(false);
           }}
+        />
+      )}
+
+      {showSavedEvents && currentUser && (
+        <SavedEvents
+          accessToken={accessToken}
+          genreWeights={genreWeights}
+          savedEventIds={savedEventIds}
+          onToggleSaved={toggleSavedEvent}
+          onClose={() => setShowSavedEvents(false)}
         />
       )}
     </div>

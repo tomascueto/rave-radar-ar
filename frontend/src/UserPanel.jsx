@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { EventCard } from "./Map";
+import { useState } from "react";
 
 const API_BASE = "http://localhost:8000";
 
@@ -7,7 +6,6 @@ const TABS = [
   { key: "perfil", label: "Perfil" },
   { key: "seguridad", label: "Seguridad" },
   { key: "cuentas", label: "Cuentas conectadas" },
-  { key: "guardados", label: "Eventos guardados" },
 ];
 
 function ProfileSection({ accessToken, currentUser, onUserUpdate }) {
@@ -242,76 +240,8 @@ function ConnectedAccountsSection({ currentUser, linkError, linkSuccess }) {
   );
 }
 
-function SavedEventsSection({ accessToken, genreWeights, savedEventIds, onToggleSaved }) {
-  const [events, setEvents] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-
-  function fetchSaved() {
-    setLoading(true);
-    setError(null);
-    fetch(`${API_BASE}/api/users/me/saved-events`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`API respondió ${res.status}`);
-        return res.json();
-      })
-      .then((data) => {
-        setEvents(data);
-        setLoading(false);
-      })
-      .catch(() => {
-        setError("No se pudieron cargar los eventos guardados");
-        setLoading(false);
-      });
-  }
-
-  useEffect(() => {
-    fetchSaved();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  if (loading) {
-    return <p className="flyer-sans flyer-text-faint text-sm">Cargando eventos guardados...</p>;
-  }
-  if (error) {
-    return <p className="flyer-sans flyer-banner-error text-sm rounded-lg px-3 py-2 inline-block">{error}</p>;
-  }
-
-  // Filtrado por el Set global (savedEventIds), no por el array local de
-  // "events" -- ese Set es el que ya actualiza el corazon al instante
-  // (desde esta lista o desde el mapa/chat), asi que sacar un evento de
-  // guardados lo saca de aca sin pedirle nada de nuevo al server.
-  const visibleEvents = events.filter((ev) => savedEventIds?.has(ev.id));
-
-  if (visibleEvents.length === 0) {
-    return (
-      <p className="flyer-sans flyer-text-faint text-sm">
-        Todavía no guardaste ningún evento. Los vas a poder guardar desde su tarjeta en el mapa.
-      </p>
-    );
-  }
-
-  return (
-    <div className="h-full overflow-y-auto p-1 -m-1 flex flex-wrap content-start gap-4">
-      {visibleEvents.map((ev) => (
-        <EventCard
-          key={ev.id}
-          ev={ev}
-          genreWeights={genreWeights}
-          isSaved={true}
-          onToggleSave={() => onToggleSaved(ev.id)}
-          onRemove={() => onToggleSaved(ev.id)}
-        />
-      ))}
-    </div>
-  );
-}
-
 export default function UserPanel({
-  accessToken, currentUser, genreWeights, initialTab, linkError, linkSuccess,
-  savedEventIds, onToggleSaved, onClose, onUserUpdate,
+  accessToken, currentUser, initialTab, linkError, linkSuccess, onClose, onUserUpdate,
 }) {
   const [activeTab, setActiveTab] = useState(initialTab || "perfil");
 
@@ -324,6 +254,8 @@ export default function UserPanel({
           </h2>
           <button
             onClick={onClose}
+            title="Cerrar"
+            aria-label="Cerrar"
             className="flyer-text-muted hover:opacity-100 text-xl leading-none transition-opacity"
             style={{ color: "var(--flyer-paper)", opacity: 0.55 }}
           >
@@ -352,14 +284,6 @@ export default function UserPanel({
           {activeTab === "seguridad" && <SecuritySection accessToken={accessToken} />}
           {activeTab === "cuentas" && (
             <ConnectedAccountsSection currentUser={currentUser} linkError={linkError} linkSuccess={linkSuccess} />
-          )}
-          {activeTab === "guardados" && (
-            <SavedEventsSection
-              accessToken={accessToken}
-              genreWeights={genreWeights}
-              savedEventIds={savedEventIds}
-              onToggleSaved={onToggleSaved}
-            />
           )}
         </div>
       </div>

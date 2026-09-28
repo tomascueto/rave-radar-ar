@@ -94,6 +94,7 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, i
       <button
         onClick={onToggle}
         title="Abrir chat"
+        aria-label="Abrir chat"
         className="fixed bottom-6 left-4 z-[1500] w-14 h-14 rounded-full flex items-center justify-center flyer-chat-fab transition-colors"
       >
         <ChatIcon className="w-6 h-6" />
@@ -102,7 +103,7 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, i
   }
 
   return (
-    <div className="fixed bottom-6 left-4 z-[1500] w-96 h-[600px] max-h-[80vh] flex flex-col overflow-hidden rounded-2xl flyer-chat-panel flyer-pop-enter">
+    <div className="fixed bottom-6 left-4 right-4 sm:right-auto z-[1500] w-auto sm:w-96 h-[600px] max-h-[70vh] sm:max-h-[80vh] flex flex-col overflow-hidden rounded-2xl flyer-chat-panel flyer-pop-enter">
       <div className="flex items-center justify-between px-4 py-3 flyer-chat-header">
         <span className="flyer-sans font-bold text-sm" style={{ color: "var(--flyer-paper)" }}>
           Rave Radar AR
@@ -110,6 +111,7 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, i
         <button
           onClick={onToggle}
           title="Cerrar chat"
+          aria-label="Cerrar chat"
           className="flyer-text-muted hover:opacity-100 text-xl leading-none transition-opacity"
           style={{ color: "var(--flyer-paper)", opacity: 0.55 }}
         >

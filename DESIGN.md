@@ -312,7 +312,8 @@ Círculos (`div` icons), no pines/gota — una ruptura deliberada respecto al ma
 # Scoped World: LandingPage + App Chrome — "El Flyer Xerografiado"
 
 > **SCOPE BOUNDARY.** This world originated on `LandingPage` alone (`frontend/src/App.jsx`, the full-screen welcome view rendered before `onEnter`), run through the full new-work flow (direction "El Flyer Xerografiado", seed `7d2ebe14`), reviewed to a `ship` verdict — see `.impeccable/review/desktop.png` and `.impeccable/review/mobile.png`. No approved comp exists (code-led build, no image generation available) — none is referenced. The user then explicitly directed its extension to the rest of the app's persistent chrome, without rerunning the direction-choice ceremony (the world was already committed; only its reach changed). It now applies to:
-> - `LandingPage` (`frontend/src/App.jsx`) — unchanged from the original ship.
+> - `LandingPage` (`frontend/src/App.jsx`) — the original ship (hero: title, tagline, CTA, corner pin, background system), still exactly one `h-screen` dark viewport, now sitting in normal document flow instead of a `fixed inset-0` frame, with `LandingMore` mounted directly below it in the same component so the page scrolls past the hero into further content. The decorative corner `LandingPin` overlay still reuses the existing `.flyer-pin`/`.flyer-pin-enter` classes verbatim (no new token, no new shape).
+> - `frontend/src/LandingMore.jsx` — the feature/FAQ/final-CTA content mounted inside `LandingPage` right below the hero (reached by scrolling, not a separate route); reuses `.flyer-card` (feature highlights) and `flyer-cta` (final CTA) unmodified, Archivo only (no Anton, no Courier Prime in this section). Its own CTA calls the same `onEnter` handler as the hero's CTA.
 > - `Navbar` (`frontend/src/Navbar.jsx`) — the whole component.
 > - Inside `frontend/src/Map.jsx`: `FilterBar`, the locate-me button, the loading pill, `EventCard`, and `EventDetailOverlay`'s chrome (prev/next arrows, close button, carousel index badge).
 >
@@ -327,7 +328,7 @@ Círculos (`div` icons), no pines/gota — una ruptura deliberada respecto al ma
 The entry screen reads as a photocopied/risograph rave flyer, not a generic SaaS splash. Near-black tóner-nocturno ground, a blurred and duotoned city map standing in for the flyer's "how to get there" insert, halftone grain over everything, a single organizing diagonal wedge, and a torn-stub CTA button — deliberately rejecting the centered-hero/clean-gradient default landing pattern.
 
 **Key Characteristics:**
-- Dark-only, single-viewport (100dvh), non-scrolling entry screen — no light variant exists or is planned for this surface.
+- Dark-only entry screen — no light variant exists or is planned for this surface. The hero itself is still exactly one non-scrolling 100dvh viewport (title, tagline, CTA, corner pin, background system, unchanged in composition), but the page it sits atop now scrolls past it into `LandingMore`'s content below — a deliberate, user-directed change from the earlier single-viewport-only entry screen, not drift.
 - Reuses the app's existing violet brand ink in a new material role (riso spot color on dark ground) rather than introducing a new primary.
 - One reserved second spot color (fluoro pink) used only on two literal glyphs, never decoratively.
 - Two self-hosted faces (a condensed-poster display face, a typewriter/mono body face) replace the system-font stack for this surface only.
@@ -400,6 +401,9 @@ No conventional shadow vocabulary — depth here comes from a stacked flat-layer
 
 ### Background System (signature component, `LandingPage` only)
 Described fully in Elevation & Depth: blurred/duotoned non-interactive map → diagonal ink wedge → content scrim (the real contrast guarantee) → halftone grain → one-shot scanbar sweep. Not reused elsewhere — `Navbar` and the map's floating controls use flat solid `flyer-ink`, no background-system stack.
+
+### Scroll Cue (`LandingPage` hero only)
+A small chevron button (`.flyer-scroll-cue`) pinned to the bottom of the hero, the one affordance signaling that the page continues below into `LandingMore`. Papel at 60% opacity, violet + full opacity on hover, click smooth-scrolls to the `LandingMore` section (`scrollIntoView`, instant jump under `prefers-reduced-motion`). Floats via `flyer-scroll-cue-float`, a gentle `ease-in-out` translate (0 → 6px → 0, 1.8s loop) — deliberately not a bounce/elastic curve, so it doesn't read as the same gesture as a spring/bounce affordance; disabled entirely under `prefers-reduced-motion`. Shares the world's common `:focus-visible` treatment. Not a general-purpose component — scoped to this one hero-to-content transition.
 
 ### Navbar
 - **Style:** `flyer-navbar` — solid Tóner Nocturno, 1px bottom border in Violeta Eléctrico at 45% opacity (a persistent, quieter echo of the landing's hairline rule, not the same element).

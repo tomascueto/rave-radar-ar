@@ -142,6 +142,13 @@ function makeIcon(precision, isActive, affinityRatio, isPersonalized, animate = 
   // ecualizador dibujado adentro del circulo, a modo de guiño al genero
   // del evento sin agregar un canal de informacion nuevo (el mismo icono,
   // mismo color base, en todos los pines).
+  // Borde: puramente decorativo, blanco de siempre. El icono interior
+  // (ecualizador) SI se queda en ink en vez de volver a blanco -- no es
+  // parte de la paleta nueva que se revirtio, es un fix de contraste
+  // real independiente (contra el relleno verde-amarillo o naranja el
+  // blanco original daba ~1.7:1, muy por debajo del piso; ink llega a
+  // 11.5:1+ contra los cuatro colores posibles de afinidad -- mismo
+  // motivo que el numero del cluster mas abajo).
   return L.divIcon({
     className: "",
     html: `<div class="flyer-pin${animate ? " flyer-pin-enter" : ""}" style="
@@ -151,9 +158,9 @@ function makeIcon(precision, isActive, affinityRatio, isPersonalized, animate = 
       display:flex;align-items:center;justify-content:center;
     ">
       <svg viewBox="0 0 24 24" fill="none" style="width:48%;height:48%;pointer-events:none;">
-        <rect x="6" y="10" width="3" height="8" rx="1" fill="white" fill-opacity="0.85" />
-        <rect x="10.5" y="5" width="3" height="13" rx="1" fill="white" fill-opacity="0.85" />
-        <rect x="15" y="8" width="3" height="10" rx="1" fill="white" fill-opacity="0.85" />
+        <rect x="6" y="10" width="3" height="8" rx="1" fill="#0b0b10" fill-opacity="0.85" />
+        <rect x="10.5" y="5" width="3" height="13" rx="1" fill="#0b0b10" fill-opacity="0.85" />
+        <rect x="15" y="8" width="3" height="10" rx="1" fill="#0b0b10" fill-opacity="0.85" />
       </svg>
     </div>`,
     iconSize: [size, size],
@@ -205,26 +212,45 @@ function FilterBar({ active, onChange }) {
   useLayoutEffect(() => {
     function measure() {
       const btn = buttonRefs.current[active];
-      const container = containerRef.current;
-      if (!btn || !container) return;
-      const containerRect = container.getBoundingClientRect();
-      const btnRect = btn.getBoundingClientRect();
-      setThumb({ left: btnRect.left - containerRect.left, width: btnRect.width });
+      if (!btn) return;
+      // offsetLeft/offsetWidth, NO getBoundingClientRect: este contenedor
+      // scrollea horizontal en mobile, y getBoundingClientRect devuelve
+      // coordenadas relativas al VIEWPORT -- contaminadas por el scroll
+      // actual en el momento de medir. Eso es lo que desincronizaba el
+      // thumb al volver de "Este mes" a otro filtro: al medir, el
+      // contenedor todavia estaba scrolleado hacia el final, asi que la
+      // resta daba una posicion negativa (el thumb quedaba calculado
+      // fuera del area visible, invisible, y ahi se quedaba pegado
+      // aunque el scroll despues volviera a 0). offsetLeft es relativo
+      // al padre posicionado (este mismo contenedor), nunca cambia con
+      // el scroll -- el thumb, al ser un hijo mas del mismo contenedor
+      // scrolleable, se mueve solo junto con el scroll sin necesidad de
+      // remedirlo.
+      setThumb({ left: btn.offsetLeft, width: btn.offsetWidth });
     }
     measure();
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [active]);
 
+  useEffect(() => {
+    // En mobile la barra completa no entra en el ancho de pantalla (ver
+    // overflow-x-auto abajo) -- sin esto, elegir un filtro que cae fuera
+    // del recorte inicial lo deja seleccionado pero invisible, sin forma
+    // de confirmar que realmente se aplico.
+    buttonRefs.current[active]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [active]);
+
   return (
     <div
       ref={containerRef}
-      className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex gap-1 flyer-pill rounded-full p-1"
+      className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] flex gap-1 trial-pill rounded-full p-1 max-w-[calc(100vw-32px)] overflow-x-auto flyer-scroll-hidden"
+      style={{ overscrollBehaviorX: "contain", WebkitOverflowScrolling: "touch" }}
     >
       {thumb && (
         <div
-          className="absolute top-1 bottom-1 rounded-full flyer-filter-thumb"
-          style={{ left: thumb.left, width: thumb.width }}
+          className="absolute top-1 left-0 bottom-1 rounded-full flyer-filter-thumb pointer-events-none"
+          style={{ width: thumb.width, transform: `translateX(${thumb.left}px)` }}
           aria-hidden="true"
         />
       )}
@@ -233,7 +259,7 @@ function FilterBar({ active, onChange }) {
           key={f.key}
           ref={(el) => { buttonRefs.current[f.key] = el; }}
           onClick={() => onChange(f.key)}
-          className={`relative z-10 flyer-sans px-3 py-1.5 text-xs font-medium uppercase tracking-wide rounded-full transition-colors whitespace-nowrap ${
+          className={`relative z-10 flex-shrink-0 trial-sans px-3 py-2 text-xs font-medium rounded-full transition-colors whitespace-nowrap ${
             active === f.key ? "flyer-filter-text-active" : "flyer-pill-text"
           }`}
         >
@@ -338,7 +364,7 @@ function ZoomSlider() {
   return (
     <div
       ref={containerRef}
-      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] flyer-pill rounded-full flex items-center gap-3 px-4 py-2"
+      className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[1000] trial-pill rounded-full flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2"
     >
       <input
         type="range"
@@ -348,9 +374,9 @@ function ZoomSlider() {
         value={zoom}
         onChange={(e) => map.setZoom(Number(e.target.value))}
         aria-label="Zoom del mapa"
-        className="flyer-zoom-range w-40"
+        className="trial-zoom-range w-20 sm:w-40"
       />
-      <span className="flyer-sans flyer-text-muted text-xs whitespace-nowrap tabular-nums">
+      <span className="trial-sans flyer-text-muted text-xs whitespace-nowrap tabular-nums">
         ~{Math.round(km)} km
       </span>
     </div>
@@ -468,7 +494,15 @@ function EventClusterLayer({
       });
       setClusterCarousel({ events: childEvents, colors: childColors, index: 0 });
     } else {
-      map.fitBounds(bounds, { padding: [50, 50] });
+      // maxZoom: sin tope, un cluster geograficamente muy apretado (pero
+      // igual arriba del umbral de "mismo venue" de 30m) fuerza a
+      // fitBounds a acercar hasta el maximo posible para separarlos con
+      // el padding pedido -- eso es lo que dejaba los eventos "MUY
+      // separados" en pantalla. Con el tope, si un click no alcanza a
+      // separarlos del todo a esta distancia, el usuario puede volver a
+      // clickear el cluster ya mas cerca -- mejor eso que un acercamiento
+      // extremo de una sola vez.
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
     }
   }
 
@@ -548,7 +582,8 @@ function makeClusterIcon(cluster) {
 
 // Dibujado, no emoji -- mismo criterio que RadarIcon/ChevronIcon. Relleno
 // (currentColor) cuando el evento esta guardado, solo contorno si no.
-function HeartIcon({ filled, className }) {
+// Exportado para reusarse tal cual en el acceso directo del Navbar.
+export function HeartIcon({ filled, className }) {
   return (
     <svg viewBox="0 0 24 24" className={className} xmlns="http://www.w3.org/2000/svg">
       <path
@@ -607,7 +642,7 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
   const showPlaceholder = !ev.flyer_url || imgFailed;
 
   return (
-    <div className="w-64 h-full flyer-card p-3 flex flex-col">
+    <div className="w-64 h-full trial-card p-3 flex flex-col">
       <div className="relative mb-2">
         {showPlaceholder ? (
           <div className="w-full h-28 flyer-card-image flyer-card-placeholder flex items-center justify-center">
@@ -635,7 +670,14 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
               ? "Sacar de guardados"
               : "Guardar evento"
           }
-          className={`flyer-heart-btn absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+          aria-label={
+            !onToggleSave
+              ? "Iniciá sesión para guardar eventos"
+              : isSaved
+              ? "Sacar de guardados"
+              : "Guardar evento"
+          }
+          className={`trial-heart-btn absolute top-2 right-2 w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
             isSaved ? "is-saved" : ""
           }`}
         >
@@ -665,7 +707,7 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
               <span
                 key={g}
                 className={`flyer-sans text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
-                  isMatch ? "flyer-chip-match" : "flyer-chip"
+                  isMatch ? "trial-chip-match" : "trial-chip"
                 }`}
               >
                 {g}
@@ -752,14 +794,14 @@ function EventDetailOverlay({
       onClick={dismissOnOutsideClick ? onClose : undefined}
     >
       <div
-        className="relative flex items-center gap-3 pointer-events-auto"
-        style={{ transform: "translateY(-170px)" }}
+        className="relative flex items-center gap-3 pointer-events-auto flyer-detail-offset"
         onClick={(e) => e.stopPropagation()}
       >
         {isChatMode && (
           <button
             onClick={onPrev}
             disabled={activeIndex === 0}
+            aria-label="Evento anterior"
             className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
           >
             <ChevronIcon direction="left" className="w-4 h-4" />
@@ -770,6 +812,7 @@ function EventDetailOverlay({
           <button
             onClick={onClose}
             title="Cerrar"
+            aria-label="Cerrar"
             className="absolute -top-2.5 -right-2.5 z-10 w-7 h-7 flex items-center justify-center rounded-full flyer-icon-btn text-sm transition-colors"
           >
             ×
@@ -786,6 +829,7 @@ function EventDetailOverlay({
           <button
             onClick={onNext}
             disabled={activeIndex === total - 1}
+            aria-label="Evento siguiente"
             className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
           >
             <ChevronIcon direction="right" className="w-4 h-4" />
@@ -905,6 +949,7 @@ export default function Map({
       <button
         onClick={onLocateMe}
         title="Centrar en mi ubicación"
+        aria-label="Centrar en mi ubicación"
         className="absolute bottom-6 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center flyer-icon-btn transition-colors"
       >
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

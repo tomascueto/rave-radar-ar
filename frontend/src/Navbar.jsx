@@ -1,8 +1,42 @@
-function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, onLogout }) {
+import { HeartIcon } from "./Map";
+
+// Dibujado, no libreria de iconos ni emoji -- mismo criterio que
+// HeartIcon/ChevronIcon/PinIcon en el resto de la app. Puerta + flecha,
+// el glifo estandar de "iniciar sesion".
+function LoginIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+      <path
+        d="M15 3h3.5A1.5 1.5 0 0 1 20 4.5v15a1.5 1.5 0 0 1-1.5 1.5H15"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M4 12h11.5M11 7.5 15.5 12 11 16.5"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, onOpenSavedEvents, onLogout }) {
   if (currentUser) {
     const initial = (currentUser.display_name || currentUser.email || "?").trim().charAt(0).toUpperCase();
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1 sm:gap-2">
+        <button
+          onClick={onOpenSavedEvents}
+          title="Eventos guardados"
+          aria-label="Eventos guardados"
+          className="trial-ghost-btn w-9 h-9 rounded-full flex items-center justify-center transition-colors"
+        >
+          <HeartIcon filled={false} className="w-4 h-4" />
+        </button>
         <button
           onClick={onOpenUserPanel}
           title="Tu cuenta"
@@ -31,19 +65,21 @@ function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, 
               {initial}
             </span>
           )}
-          <span className="flyer-sans flyer-text-muted text-sm font-medium hidden sm:inline">
+          <span className="trial-sans flyer-text-muted text-sm font-medium hidden sm:inline">
             {currentUser.display_name}
           </span>
         </button>
         <button
           onClick={onOpenPreferences}
-          className="flyer-ghost-btn flyer-sans text-xs font-semibold uppercase tracking-wide rounded-full px-3 py-1.5 transition-colors"
+          title="Preferencias"
+          className="trial-ghost-btn trial-sans text-xs font-medium rounded-full px-2 sm:px-3 py-2 transition-colors whitespace-nowrap"
         >
-          Preferencias
+          <span className="hidden sm:inline">Preferencias</span>
+          <span className="sm:hidden">Prefs.</span>
         </button>
         <button
           onClick={onLogout}
-          className="flyer-ghost-btn flyer-sans text-xs font-semibold uppercase tracking-wide rounded-full px-3 py-1.5 transition-colors"
+          className="trial-ghost-btn trial-sans text-xs font-medium rounded-full px-2 sm:px-3 py-2 transition-colors whitespace-nowrap"
         >
           Salir
         </button>
@@ -53,17 +89,20 @@ function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, 
   return (
     <button
       onClick={onOpenAuth}
-      className="flyer-navbar-cta flyer-sans text-sm font-bold rounded-full px-6 py-2.5"
+      className="trial-navbar-cta trial-sans inline-flex items-center gap-2 text-sm font-bold rounded-full pl-5 pr-6 py-3"
     >
+      <LoginIcon className="w-4 h-4" />
       Iniciar sesión
     </button>
   );
 }
 
-export default function Navbar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, onLogout }) {
+export default function Navbar({
+  currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, onOpenSavedEvents, onLogout,
+}) {
   return (
-    <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 flyer-navbar">
-      <h1 className="flyer-title text-xl uppercase" style={{ letterSpacing: "-0.02em" }}>
+    <header className="h-14 flex-shrink-0 flex items-center justify-between gap-2 px-3 sm:px-4 trial-navbar">
+      <h1 className="flyer-title text-base sm:text-xl uppercase shrink-0" style={{ letterSpacing: "-0.02em" }}>
         Rave Radar AR
       </h1>
       <AuthBar
@@ -71,6 +110,7 @@ export default function Navbar({ currentUser, onOpenAuth, onOpenPreferences, onO
         onOpenAuth={onOpenAuth}
         onOpenPreferences={onOpenPreferences}
         onOpenUserPanel={onOpenUserPanel}
+        onOpenSavedEvents={onOpenSavedEvents}
         onLogout={onLogout}
       />
     </header>

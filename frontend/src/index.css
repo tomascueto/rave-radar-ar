@@ -110,6 +110,15 @@
   opacity: 0.35;
 }
 
+/* Funde el pie del hero a Tóner Nocturno solido -- el duotono
+   (.flyer-duotone) se pone bien violeta hacia abajo (gradiente 155deg,
+   140% de recorrido), y LandingMore (mas abajo, fuera del hero) es
+   Tóner Nocturno plano: sin este fundido quedaba una costura dura
+   violeta-a-negro justo en el borde de los 100vh del hero. */
+.flyer-hero-fade {
+  background: linear-gradient(180deg, transparent 78%, var(--flyer-ink) 100%);
+}
+
 .flyer-title {
   font-family: "Anton", system-ui, sans-serif;
   color: var(--flyer-paper);
@@ -287,6 +296,14 @@
    mismo lenguaje visual que .flyer-pin (violeta de marca, borde blanco,
    sombra) en vez de tirar del CSS default de leaflet.markercluster, que
    rompe con el resto del sistema. */
+/* El color de fondo (afinidad dominante) sigue viniendo 100% de
+   dominantClusterColor/buildClusterDivIcon -- ver SCOPE BOUNDARY en
+   DESIGN.md, esta clase nunca lo toca. El texto SI se corrigio y se
+   queda corregido (no es parte de la paleta que se revirtio): blanco
+   daba 1.68:1 contra el relleno verde-amarillo parcial y 1.71:1 contra
+   naranja (ilegible) -- ink pasa 3.45:1+ contra los cuatro colores
+   posibles (violeta neutro, verde fuerte, verde-amarillo, naranja).
+   Borde blanco de siempre. */
 .flyer-cluster {
   display: flex;
   align-items: center;
@@ -294,7 +311,7 @@
   border-radius: 50%;
   background: var(--flyer-violet);
   border: 2px solid white;
-  color: white;
+  color: var(--flyer-ink);
   font-weight: 700;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.5);
   cursor: pointer;
@@ -398,6 +415,245 @@
   }
 }
 
+/* ============================================================
+   Estructura "Uber" (ver awesome-design-md/uber) aplicada a Navbar +
+   chrome del mapa, con la paleta de marca de siempre.
+
+   Hubo una prueba intermedia sumando tres colores nuevos (azul/hot
+   pink/oat) a estos mismos componentes -- el usuario decidio quedarse
+   con la tipografia/espaciado/estados nuevos pero volver a los colores
+   de siempre, asi que estas clases trial-* ya NO usan esa paleta:
+   vuelven a los tokens --flyer-* compartidos por el resto del mundo
+   Flyer Xerografiado. Nunca se tocan esos tokens compartidos
+   directamente (LandingPage/EventDetailOverlay chrome siguen igual). */
+.trial-navbar {
+  background: var(--flyer-ink);
+  border-bottom: 1px solid rgba(124, 58, 237, 0.45);
+}
+
+.trial-ghost-btn {
+  color: var(--flyer-paper);
+  background: transparent;
+  border: 1px solid rgba(124, 58, 237, 0.45);
+}
+
+.trial-ghost-btn:hover {
+  background: rgba(124, 58, 237, 0.18);
+  border-color: var(--flyer-violet);
+}
+
+/* Estructura "Uber" (ver awesome-design-md/uber): tipografia de sistema
+   en vez de Archivo -- UberMove/UberMoveText son fuentes propietarias,
+   no se pueden auto-hospedar como Anton/Courier Prime/Archivo, asi que
+   esto sustituye su jerarquia (700 solo en titulares, 400/500 en
+   cuerpo) con un grotesk de sistema. Navbar + el chrome del mapa
+   (FilterBar, ZoomSlider) -- Archivo sigue siendo la voz del resto del
+   mundo Flyer Xerografiado (Two-Voice Rule, ver DESIGN.md; EventCard no
+   se toco en el paso 2), esto abre una tercera voz acotada a estos
+   componentes. Sentence-case, sin tracking-wide (regla de Uber:
+   "sentence-case headlines only", "no tracking flourish") -- ni
+   Preferencias/Salir ni los filtros llevan mas el uppercase+tracking
+   de antes. */
+.trial-sans {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/* CTA "Iniciar sesión" -- misma pildora violeta de siempre (se
+   mantiene el acento de marca a pedido explicito), sin box-shadow de
+   brillo/glow coloreado: la referencia Uber pide "no atmospheric
+   effects". La sombra SI es la misma de elevacion lisa (dos capas,
+   neutra) que ya usan el resto de las pildoras flotantes de la app
+   (FilterBar/ZoomSlider, ver .trial-pill) -- antes tenia una mas plana
+   de una sola capa, que la hacia sentir menos parte del mismo sistema
+   que el resto del chrome. */
+.trial-navbar-cta {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.trial-navbar-cta:hover {
+  background: var(--flyer-violet-deep);
+  transform: translateY(-1px);
+}
+
+.trial-ghost-btn:focus-visible,
+.trial-navbar-cta:focus-visible {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+/* --- Map chrome: FilterBar + ZoomSlider (paso 2) --- */
+.trial-pill {
+  background: rgba(11, 11, 16, 0.92);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+/* Mismo control que .flyer-zoom-range -- existe como clase propia solo
+   para poder cambiarle despues el color del thumb/anillo sin tocar la
+   compartida, aunque hoy vuelva a valer lo mismo que esa. */
+.trial-zoom-range {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  height: 16px;
+  cursor: pointer;
+}
+
+.trial-zoom-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(124, 58, 237, 0.3);
+}
+
+.trial-zoom-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 9999px;
+  background: var(--flyer-violet);
+  border: 2px solid var(--flyer-paper);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease-out;
+}
+
+.trial-zoom-range::-webkit-slider-thumb:hover {
+  transform: scale(1.15);
+}
+
+.trial-zoom-range::-moz-range-track {
+  height: 4px;
+  border-radius: 9999px;
+  background: rgba(124, 58, 237, 0.3);
+}
+
+.trial-zoom-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 9999px;
+  background: var(--flyer-violet);
+  border: 2px solid var(--flyer-paper);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+}
+
+.trial-zoom-range:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+.trial-zoom-range:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+.flyer-pill-text:focus-visible,
+.flyer-filter-text-active:focus-visible {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+/* Pulido (Taste Skill, pase de "Operate"): feedback tactil de :active
+   que faltaba en toda esta pasada -- Emil/taste-skill piden scale(0.97)
+   o translateY(1px) en vez de nada, para que un click se sienta
+   "apretado" y no solo un cambio de color. Transform explicito en la
+   transicion (no alcanzaba con transition-colors de Tailwind, que no
+   incluye transform). */
+.trial-ghost-btn,
+.trial-heart-btn {
+  transition: background-color 0.15s ease-out, border-color 0.15s ease-out, color 0.15s ease-out, transform 0.1s ease-out;
+}
+
+.trial-ghost-btn:active,
+.trial-heart-btn:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.trial-navbar-cta:active {
+  transform: scale(0.98) translateY(0);
+}
+
+.flyer-pill-text,
+.flyer-filter-text-active {
+  transition: color 0.15s ease-out, background-color 0.15s ease-out, transform 0.1s ease-out;
+}
+
+.flyer-pill-text:active,
+.flyer-filter-text-active:active {
+  transform: scale(0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trial-zoom-range::-webkit-slider-thumb {
+    transition: none;
+  }
+}
+
+/* --- EventCard --- */
+.trial-card {
+  background: var(--flyer-paper);
+  clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35);
+}
+
+.trial-chip {
+  background: rgba(124, 58, 237, 0.12);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  color: var(--flyer-violet-deep);
+}
+
+.trial-chip-match {
+  background: var(--flyer-violet);
+  border: 1px solid var(--flyer-violet-deep);
+  color: var(--flyer-paper);
+}
+
+.trial-heart-btn {
+  background: var(--flyer-ink);
+  border: 1px solid rgba(124, 58, 237, 0.4);
+  color: var(--flyer-paper);
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+.trial-heart-btn:hover:not(:disabled):not(.is-saved) {
+  background: var(--flyer-violet-deep);
+}
+
+.trial-heart-btn.is-saved {
+  color: var(--flyer-pink);
+  border-color: var(--flyer-pink);
+}
+
+.trial-heart-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* No tenia anillo de foco propio (tampoco lo tenia .flyer-heart-btn
+   original) -- lo suma esta pasada de auditoria con Web Design
+   Guidelines, independiente de la paleta. */
+.trial-heart-btn:focus-visible {
+  outline: 2px solid var(--flyer-pink);
+  outline-offset: 2px;
+}
+
+/* "Comprar entrada" reusa la forma/notch de .flyer-cta sin tocar esa
+   regla compartida (LandingPage tambien la usa) -- solo el color, y
+   solo cuando esta anidado dentro de .trial-card. Vuelve a valer lo
+   mismo que .flyer-cta base; queda como override explicito por si el
+   dia de mañana EventCard necesita divergir de nuevo. */
+.trial-card .flyer-cta {
+  background: var(--flyer-violet);
+  color: var(--flyer-paper);
+}
+
+.trial-card .flyer-cta:hover {
+  background: var(--flyer-violet-deep);
+}
+/* ============================================================ */
+
 /* Extensión de "El Flyer Xerografiado" a Navbar y EventCard (ver DESIGN.md) */
 
 .flyer-navbar {
@@ -462,6 +718,19 @@
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.3), 0 4px 6px -4px rgb(0 0 0 / 0.3);
 }
 
+/* FilterBar en mobile: la barra completa no entra en pantalla, asi que
+   scrollea horizontal en vez de desbordar simetricamente a los dos lados
+   (donde ni el primer ni el ultimo filtro eran alcanzables). Sin scrollbar
+   visible -- el gesto de swipe ya es la afordancia. */
+.flyer-scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.flyer-scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 .flyer-pill-text {
   color: rgba(245, 241, 230, 0.7);
 }
@@ -477,7 +746,7 @@
 
 .flyer-filter-thumb {
   background: var(--flyer-violet);
-  transition: left 0.32s cubic-bezier(0.4, 0, 0.2, 1), width 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: transform 0.32s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -632,6 +901,15 @@
   animation: flyer-pop-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* Corrimiento vertical de EventDetailOverlay -- antes un -170px fijo que
+   asumia una ventana alta (desktop). Relativo al alto real del viewport
+   (vh), con piso en -170px (el valor de diseño original, para pantallas
+   altas) y techo en -55px: en un celular la ventana es mas baja, asi que
+   el mismo -170px empujaba la tarjeta hasta pisar el FilterBar. */
+.flyer-detail-offset {
+  transform: translateY(clamp(-170px, -17vh, -55px));
+}
+
 .flyer-chat-header {
   border-bottom: 1px solid rgba(124, 58, 237, 0.35);
 }
@@ -767,15 +1045,70 @@
 .flyer-btn-solid:focus-visible,
 .flyer-navbar-cta:focus-visible,
 .flyer-icon-btn:focus-visible,
-.flyer-pill-text:focus-visible,
-.flyer-filter-text-active:focus-visible,
 .flyer-chat-fab:focus-visible,
 .flyer-chat-action:focus-visible,
 .flyer-toggle-chip:focus-visible,
 .flyer-toggle-chip-active:focus-visible,
-.flyer-field:focus-visible {
+.flyer-field:focus-visible,
+.flyer-scroll-cue:focus-visible {
   outline: 2px solid var(--flyer-pink);
   outline-offset: 2px;
+}
+
+/* Affordance de scroll al pie del hero -- LandingPage dejo de ser una
+   pantalla unica (100dvh, sin scroll): ahora hay mas contenido debajo, y
+   nada mas en la composicion sugeria que se podia bajar. Un solo gesto
+   de rebote sutil, boton real (hace scroll suave al hacer click), no un
+   simple adorno. */
+@keyframes flyer-scroll-cue-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+.flyer-scroll-cue {
+  color: var(--flyer-paper);
+  opacity: 0.6;
+  transition: opacity 0.15s ease-out, color 0.15s ease-out;
+  animation: flyer-scroll-cue-float 1.8s ease-in-out infinite;
+}
+
+.flyer-scroll-cue:hover {
+  opacity: 1;
+  color: var(--flyer-violet);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyer-scroll-cue {
+    animation: none;
+  }
+}
+
+/* Entrada al hacer scroll de AboutPage -- la unica interaccion de firma
+   de esta superficie (ver Direction Contract, FIRST VIEWPORT/FORM):
+   misma curva que flyer-pin-enter/flyer-cta-bloom, una sola gramatica
+   repetida por seccion, nunca un efecto distinto por bloque. */
+.flyer-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.flyer-reveal-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flyer-reveal {
+    transition: none;
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
