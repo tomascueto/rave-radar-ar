@@ -87,9 +87,13 @@ function AuthBar({ currentUser, onOpenAuth, onOpenPreferences, onOpenUserPanel, 
     );
   }
   return (
+    // Reusa .flyer-cta (el mismo botón que "Comprar entrada" en EventCard,
+    // ver Map.jsx) en vez de duplicar sus valores -- mismo corte de
+    // esquina, color, tipografia y estados hover/active/focus. Solo el
+    // padding se ajusta (mas chico) para que entre bien en el navbar.
     <button
       onClick={onOpenAuth}
-      className="trial-navbar-cta trial-sans inline-flex items-center gap-2 text-sm font-bold rounded-full pl-5 pr-6 py-3"
+      className="flyer-cta flyer-sans inline-flex items-center gap-2 uppercase tracking-wide text-sm font-bold px-4 py-2.5 transition-colors"
     >
       <LoginIcon className="w-4 h-4" />
       Iniciar sesión

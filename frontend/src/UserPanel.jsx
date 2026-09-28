@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const API_BASE = "http://localhost:8000";
 
@@ -8,11 +8,66 @@ const TABS = [
   { key: "cuentas", label: "Cuentas conectadas" },
 ];
 
+// Controlado por ProfileSection -- solo junta el catalogo de ciudades y
+// dispara onChange con la seleccion local. Ya NO guarda solo: el pedido
+// original (guardar al toque, sin pasar por "Guardar cambios") confundia
+// mas de lo que resolvia -- el usuario cambiaba la ciudad, veia que
+// "Guardar cambios" seguia apagado (porque ese boton solo miraba el
+// nombre) y asumia que no habia guardado nada, aunque si. Ahora los dos
+// campos comparten el mismo ciclo de guardado explicito.
+function PreferredCitySection({ cityId, onChange, disabled }) {
+  const [cities, setCities] = useState([]);
+  const [loadingCities, setLoadingCities] = useState(true);
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/users/cities/catalog`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        setCities(data);
+        setLoadingCities(false);
+      })
+      .catch(() => setLoadingCities(false));
+  }, []);
+
+  return (
+    <div>
+      <label className="flyer-sans flyer-text-faint text-xs uppercase tracking-wide block mb-1.5">
+        Ciudad preferida
+      </label>
+      <select
+        value={cityId || ""}
+        onChange={(e) => onChange(e.target.value || null)}
+        disabled={disabled || loadingCities}
+        className="flyer-sans flyer-field flyer-select w-full px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-60"
+      >
+        <option value="">Sin preferencia</option>
+        {/* "Sin preferencia" queda fija arriba, fuera del orden -- el resto
+            se ordena alfabeticamente sin distinguir mayusculas/acentos, no
+            por como lo haya mandado el backend. */}
+        {[...cities]
+          .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }))
+          .map((city) => (
+            <option key={city.id} value={city.id}>
+              {city.name}
+            </option>
+          ))}
+      </select>
+      <p className="flyer-sans flyer-text-faint text-xs mt-1.5">
+        Ordena primero los eventos de esa ciudad cuando pedís un género en el chat.
+      </p>
+    </div>
+  );
+}
+
 function ProfileSection({ accessToken, currentUser, onUserUpdate }) {
   const [name, setName] = useState(currentUser.display_name || "");
+  const [cityId, setCityId] = useState(currentUser.preferred_city_id || null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
+
+  const nameChanged = name.trim() !== (currentUser.display_name || "");
+  const cityChanged = (cityId || null) !== (currentUser.preferred_city_id || null);
 
   async function handleSave(e) {
     e.preventDefault();
@@ -27,21 +82,41 @@ function ProfileSection({ accessToken, currentUser, onUserUpdate }) {
 
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/users/me/name`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ display_name: trimmed }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.detail || "No se pudo actualizar el nombre");
-        return;
+      const patch = {};
+
+      if (nameChanged) {
+        const res = await fetch(`${API_BASE}/api/users/me/name`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ display_name: trimmed }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.detail || "No se pudo actualizar el nombre");
+          return;
+        }
+        patch.display_name = data.display_name;
       }
+
+      if (cityChanged) {
+        const res = await fetch(`${API_BASE}/api/users/me/preferred-city`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ city_id: cityId }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setError(data.detail || "No se pudo guardar la ciudad preferida");
+          return;
+        }
+        patch.preferred_city_id = data.preferred_city_id;
+      }
+
       // Actualiza el estado de App inmediatamente -- el Navbar (y
-      // cualquier otro lugar que use currentUser) refleja el nombre
-      // nuevo sin esperar a un F5.
-      onUserUpdate({ display_name: data.display_name });
-      setSuccess("Nombre actualizado");
+      // cualquier otro lugar que use currentUser) refleja los cambios
+      // nuevos sin esperar a un F5.
+      onUserUpdate(patch);
+      setSuccess("Cambios guardados");
     } catch {
       setError("No se pudo conectar con el servidor");
     } finally {
@@ -78,12 +153,14 @@ function ProfileSection({ accessToken, currentUser, onUserUpdate }) {
           </label>
           <p className="flyer-sans flyer-text-muted text-sm">{currentUser.email}</p>
         </div>
+
+        <PreferredCitySection cityId={cityId} onChange={setCityId} disabled={saving} />
       </div>
 
       <div className="pt-4 mt-2 flyer-modal-border border-t flex-shrink-0 flex justify-end">
         <button
           type="submit"
-          disabled={saving || !name.trim() || name.trim() === currentUser.display_name}
+          disabled={saving || !name.trim() || (!nameChanged && !cityChanged)}
           className="flyer-btn-solid flyer-sans text-sm font-semibold px-4 py-2 rounded-lg disabled:opacity-40 transition-colors"
         >
           {saving ? "Guardando..." : "Guardar cambios"}

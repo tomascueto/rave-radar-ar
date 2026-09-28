@@ -543,12 +543,17 @@ function dominantClusterColor(colors) {
 // Icono de cluster generico -- separado de makeClusterIcon para poder
 // pisar el icono de UN cluster puntual con un color especifico (ver
 // clusterCarousel.colors mas abajo) sin pasar por dominantClusterColor.
-function buildClusterDivIcon(count, color) {
+// opacity: misma condicion que un pin individual (ver makeIcon) -- solo
+// baja si TODOS los eventos agrupados son de precision "city"; un
+// cluster mixto (aunque sea un solo evento con direccion real) se queda
+// en opacidad completa, porque ese evento SI tiene una ubicacion
+// confiable.
+function buildClusterDivIcon(count, color, opacity = 1) {
   const size = count >= 20 ? 48 : count >= 10 ? 42 : 36;
   return L.divIcon({
     html: `<div class="flyer-cluster flyer-sans" style="width:${size}px;height:${size}px;font-size:${
       size >= 42 ? 15 : 13
-    }px;background:${color};">${count}</div>`,
+    }px;background:${color};opacity:${opacity};">${count}</div>`,
     className: "",
     iconSize: [size, size],
   });
@@ -572,12 +577,13 @@ let activeClusterOverride = null;
 function makeClusterIcon(cluster) {
   const children = cluster.getAllChildMarkers();
   const count = children.length;
+  const opacity = children.every((m) => m.options.flyerPrecision === "city") ? 0.25 : 1;
   if (activeClusterOverride && children.some((m) => activeClusterOverride.eventIds.has(m.options.flyerId))) {
-    return buildClusterDivIcon(count, activeClusterOverride.color);
+    return buildClusterDivIcon(count, activeClusterOverride.color, opacity);
   }
   const colors = children.map((m) => m.options.flyerColor || NEUTRAL_COLOR);
   const color = dominantClusterColor(colors);
-  return buildClusterDivIcon(count, color);
+  return buildClusterDivIcon(count, color, opacity);
 }
 
 // Dibujado, no emoji -- mismo criterio que RadarIcon/ChevronIcon. Relleno
@@ -641,8 +647,26 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
 
   const showPlaceholder = !ev.flyer_url || imgFailed;
 
+  // onRemove solo lo pasa la lista de "Eventos guardados" (ver comentario
+  // arriba) -- se reusa esa misma señal para elegir variante de color en
+  // vez de sumar una prop nueva: tarjeta clara (.flyer-card, papel) ahi,
+  // porque ese modal ya es oscuro y el papel es lo que contrastaba bien;
+  // tarjeta oscura (.trial-card) en mapa/chat, porque ahi el fondo es el
+  // mapa (tiles claros) y el papel se perdia contra el.
+  const isSavedListCard = !!onRemove;
+
   return (
-    <div className="w-64 h-full trial-card p-3 flex flex-col">
+    // Sin h-full: en el carrusel del mapa/chat no hacia nada (el padre
+    // inmediato, el div "relative" que envuelve la tarjeta, no tiene alto
+    // explicito -- un 100% contra un alto "auto" no tiene efecto, asi que
+    // la tarjeta ya se dimensionaba por su contenido). En la grilla de
+    // "Eventos guardados" SI hacia algo, pero mal: esa grilla es un flex-
+    // wrap cuyo padre (el modal) tiene alto fijo, asi que 100% resolvia
+    // contra ESE alto entero en vez de limitarse a la fila -- la tarjeta
+    // quedaba estirada a practicamente el alto completo del modal. El
+    // align-items:stretch por defecto del flex-wrap ya iguala la altura
+    // entre vecinas de la misma fila sin necesidad de esto.
+    <div className={`w-64 ${isSavedListCard ? "flyer-card" : "trial-card"} p-3 flex flex-col`}>
       <div className="relative mb-2">
         {showPlaceholder ? (
           <div className="w-full h-28 flyer-card-image flyer-card-placeholder flex items-center justify-center">
@@ -691,8 +715,8 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
       <p className="flyer-sans flyer-card-ink font-bold uppercase tracking-wide text-base leading-snug line-clamp-2 min-h-[2.75rem]">
         {ev.name}
       </p>
-      <p className="flyer-sans flyer-card-ink-muted text-sm mt-1">{ev.venue_name}</p>
-      <p className="flyer-sans flyer-card-ink-muted text-xs mt-1 capitalize">
+      <p className="flyer-sans flyer-card-ink-muted font-bold text-sm mt-1">{ev.venue_name}</p>
+      <p className="flyer-sans flyer-card-ink-muted font-bold text-xs mt-1 capitalize">
         {new Date(ev.date_from).toLocaleDateString("es-AR", {
           weekday: "long", day: "2-digit", month: "2-digit",
         })}
@@ -707,7 +731,9 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
               <span
                 key={g}
                 className={`flyer-sans text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wide ${
-                  isMatch ? "trial-chip-match" : "trial-chip"
+                  isSavedListCard
+                    ? isMatch ? "flyer-chip-match" : "flyer-chip"
+                    : isMatch ? "trial-chip-match" : "trial-chip"
                 }`}
               >
                 {g}
@@ -788,13 +814,22 @@ function EventDetailOverlay({
 
   return (
     <div
-      className={`absolute inset-0 z-[1500] flex items-center justify-center ${
+      className={`absolute inset-0 z-[1500] ${
         dismissOnOutsideClick ? "" : "pointer-events-none"
       }`}
       onClick={dismissOnOutsideClick ? onClose : undefined}
     >
+      {/* Posicionada por su propio transform (ver .flyer-detail-offset), no
+          por flex-centering del padre -- flyTo (MapController) deja siempre
+          el pin/cluster clickeado en el centro exacto del contenedor, y esta
+          fila se ancla desde SU PROPIO borde inferior hacia arriba de ese
+          punto. Como translateY(-100%) es relativo a la altura real de la
+          fila, el pin queda libre debajo de la tarjeta sin importar cuanto
+          mida esta (genero, aviso de ubicacion, etc.) -- un offset fijo en
+          px, lo que habia antes, no podia garantizar eso para toda altura
+          de tarjeta. */}
       <div
-        className="relative flex items-center gap-3 pointer-events-auto flyer-detail-offset"
+        className="absolute top-1/2 left-1/2 flex items-center gap-3 pointer-events-auto flyer-detail-offset"
         onClick={(e) => e.stopPropagation()}
       >
         {isChatMode && (
@@ -842,7 +877,7 @@ function EventDetailOverlay({
 
 export default function Map({
   events, loading, error, filter, onFilterChange,
-  mode, activeIndex, onNext, onPrev, userLocation, onLocateMe, genreWeights,
+  mode, activeIndex, onNext, onPrev, userLocation, onLocateMe, locatingUser, genreWeights,
   onCloseCarousel, savedEventIds, onToggleSaved,
 }) {
   if (error) return <div className="p-4 text-red-500">Error: {error}</div>;
@@ -948,15 +983,21 @@ export default function Map({
 
       <button
         onClick={onLocateMe}
+        disabled={locatingUser}
         title="Centrar en mi ubicación"
         aria-label="Centrar en mi ubicación"
-        className="absolute bottom-6 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center flyer-icon-btn transition-colors"
+        aria-busy={locatingUser}
+        className="absolute bottom-6 right-4 z-[1000] w-10 h-10 rounded-full flex items-center justify-center flyer-icon-btn transition-colors disabled:opacity-70"
       >
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <circle cx="12" cy="12" r="3" fill="currentColor" />
-          <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.5" />
-          <path d="M12 2V5M12 19V22M22 12H19M5 12H2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
+        {locatingUser ? (
+          <RadarIcon className="w-4 h-4 flyer-radar-spin" />
+        ) : (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="12" cy="12" r="3" fill="currentColor" />
+            <circle cx="12" cy="12" r="7" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M12 2V5M12 19V22M22 12H19M5 12H2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        )}
       </button>
 
       {loading && (
@@ -1036,6 +1077,11 @@ export default function Map({
                     // distingue de forma inequivoca a que evento
                     // pertenece cada marker (ver handleClusterClick).
                     marker.options.flyerId = ev.id;
+                    // Misma logica de opacidad que un pin individual (ver
+                    // makeIcon), guardada aca para que el cluster (ver
+                    // makeClusterIcon) pueda decidir la suya sin recalcular
+                    // nada por su cuenta.
+                    marker.options.flyerPrecision = ev.venue_precision;
                   }
                 }}
                 icon={makeIcon(

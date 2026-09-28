@@ -146,12 +146,34 @@ function LandingPage({ onEnter }) {
   );
 }
 
+// Umbral de "no mostrar la landing de nuevo" -- cuenta desde la ULTIMA
+// actividad, no desde la primera entrada: "hasEnteredAt" se renueva al
+// cargar la app (con sesion valida) y ante cualquier interaccion (ver
+// touchActivity/useEffect de listeners mas abajo), asi que alguien que
+// esta una hora usando la app y aprieta F5 no ve la landing. Es la
+// pantalla de bienvenida, no un gate de acceso: tiene sentido que
+// reaparezca para alguien inactivo hace rato.
+const LANDING_IDLE_MINUTES = 30;
+
+function hasValidEntry() {
+  const storedAt = Number(localStorage.getItem("hasEnteredAt"));
+  if (!storedAt) return false;
+  const elapsedMs = Date.now() - storedAt;
+  return elapsedMs < LANDING_IDLE_MINUTES * 60 * 1000;
+}
+
+// Unico lugar que escribe "hasEnteredAt" -- tanto el click de "Entrar"
+// como el heartbeat de actividad (click/tecla/touch) y los distintos
+// desenlaces de login pasan por aca, para que la marca siempre signifique
+// lo mismo: "ultima vez que hubo actividad de un usuario ya adentro".
+function touchActivity() {
+  localStorage.setItem("hasEnteredAt", Date.now().toString());
+}
+
 function App() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [hasEntered, setHasEntered] = useState(
-    () => localStorage.getItem("hasEntered") === "true"
-  );
+  const [hasEntered, setHasEntered] = useState(hasValidEntry);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("todos");
 
@@ -169,6 +191,7 @@ function App() {
   const [googleLinkSuccess, setGoogleLinkSuccess] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [userLocation, setUserLocation] = useState(null);
+  const [locatingUser, setLocatingUser] = useState(false);
   const [genreWeights, setGenreWeights] = useState({});
   // null = sin sesion (el corazon de guardar ni se habilita) -- distinto
   // de un Set vacio, que es "logueado pero sin nada guardado todavia".
@@ -176,9 +199,33 @@ function App() {
 
 
   function handleEnter() {
-    localStorage.setItem("hasEntered", "true");
+    touchActivity();
     setHasEntered(true);
   }
+
+  // Heartbeat de "seguis ahi": si ya entraste, cada carga de la app y cada
+  // interaccion (click/tecla/touch, con throttle de 1 min para no pegarle a
+  // localStorage en cada evento) renuevan la marca -- ver LANDING_IDLE_MINUTES.
+  useEffect(() => {
+    if (!hasEntered) return;
+    touchActivity();
+
+    let lastTouch = Date.now();
+    function onActivity() {
+      const now = Date.now();
+      if (now - lastTouch < 60000) return;
+      lastTouch = now;
+      touchActivity();
+    }
+    window.addEventListener("click", onActivity);
+    window.addEventListener("keydown", onActivity);
+    window.addEventListener("touchstart", onActivity);
+    return () => {
+      window.removeEventListener("click", onActivity);
+      window.removeEventListener("keydown", onActivity);
+      window.removeEventListener("touchstart", onActivity);
+    };
+  }, [hasEntered]);
 
   function requestUserLocation() {
     // Silencioso ante rechazo, timeout, o falta de soporte -- la
@@ -188,15 +235,28 @@ function App() {
     // mío". Se llama tanto al arrancar la app como desde el botón de
     // "centrar en mi ubicación".
     if (!navigator.geolocation) return;
+    setLocatingUser(true);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setUserLocation({
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        setLocatingUser(false);
       },
-      () => {},
-      { timeout: 8000, maximumAge: 60000 }
+      () => setLocatingUser(false),
+      {
+        timeout: 8000,
+        // 10 minutos (era 1) -- trade-off deliberado: el navegador puede
+        // devolver una posicion cacheada de hasta esta antiguedad en vez
+        // de pedirle una nueva al GPS/wifi, lo que responde MUCHO mas
+        // rapido (a veces al toque). El costo: si el usuario realmente se
+        // movio en esos 10 minutos, "centrar en mi ubicacion" lo deja en
+        // donde estaba antes, no en donde esta ahora -- hasta que el cache
+        // expire y se pida una posicion nueva de verdad. Aceptable aca: es
+        // un mapa de eventos para orientarse, no navegacion turn-by-turn.
+        maximumAge: 600000,
+      }
     );
   }
 
@@ -217,6 +277,7 @@ function App() {
       // crudo. Se abre el panel directo en "Cuentas conectadas" para
       // que el usuario vea el aviso sin tener que ir a buscarlo.
       setGoogleLinkError(linkError);
+      touchActivity();
       setHasEntered(true);
       setUserPanelInitialTab("cuentas");
       setShowUserPanel(true);
@@ -228,6 +289,7 @@ function App() {
       // esto, el link terminaba en silencio: no habia forma de saber que
       // funciono salvo yendo a mirar el panel.
       setGoogleLinkSuccess(true);
+      touchActivity();
       setHasEntered(true);
       setUserPanelInitialTab("cuentas");
       setShowUserPanel(true);
@@ -235,6 +297,7 @@ function App() {
 
     if (tokenFromUrl) {
       setAccessToken(tokenFromUrl);
+      touchActivity();
       setHasEntered(true);
       window.history.replaceState({}, "", "/");
       return;
@@ -420,6 +483,7 @@ function App() {
           onFilterChange={setFilter}
           userLocation={userLocation}
           onLocateMe={requestUserLocation}
+          locatingUser={locatingUser}
           genreWeights={genreWeights}
           onCloseCarousel={fetchMapEvents}
           savedEventIds={savedEventIds}

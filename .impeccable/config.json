@@ -51,6 +51,12 @@
         ],
         "createdAt": "2026-09-24T16:20:16.750Z",
         "reason": "uppercase only on the short eyebrow line and the kicker category label (<=30 chars each, e.g. 'rave-radar-ar — vista de sistema', 'Determinístico · Python / SQL'), same pattern as sibling rag_pipeline_architecture.html; not long passages"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "roboto",
+        "createdAt": "2026-09-27T23:46:50.127Z",
+        "reason": "user confirmed: chose system-ui bold substitute for Navbar/map-chrome typography since UberMove/UberMoveText are proprietary and can't be self-hosted"
       }
     ]
   }

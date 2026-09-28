@@ -592,16 +592,51 @@
 }
 
 /* --- EventCard --- */
+/* Gris carbon con violeta, no el --flyer-ink puro (casi negro) del resto
+   del chrome oscuro ni el --flyer-paper (papel) que tenia antes -- ese
+   papel claro se perdia contra el mapa (tambien claro, tiles CARTO). Un
+   poco translucido (94%) para que la tarjeta siga sintiendose "flotando"
+   sobre el mapa en vez de un panel solido. */
 .trial-card {
-  background: var(--flyer-paper);
+  background: rgba(26, 24, 32, 0.94);
   clip-path: polygon(0 0, calc(100% - 24px) 0, 100% 24px, 100% 100%, 0 100%);
   box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.35);
 }
 
+/* .flyer-card-ink/-muted (arriba, compartidas con la tarjeta CLARA de
+   LandingMore, ver flyer-card-ink) asumen texto oscuro sobre fondo claro
+   -- overrides acotados a .trial-card, que ahora es oscura, para no
+   afectar esa otra tarjeta. Mismo patron que .trial-card .flyer-cta. */
+.trial-card .flyer-card-ink {
+  color: var(--flyer-paper);
+}
+
+.trial-card .flyer-card-ink-muted {
+  color: rgba(245, 241, 230, 0.7);
+}
+
+.trial-card .flyer-warning {
+  color: #fbbf24;
+}
+
+.trial-card .flyer-card-btn-danger {
+  background: rgba(248, 113, 113, 0.14);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fca5a5;
+}
+
+.trial-card .flyer-card-btn-danger:hover {
+  background: rgba(248, 113, 113, 0.24);
+}
+
+.trial-card .flyer-card-placeholder {
+  color: #a78bfa;
+}
+
 .trial-chip {
-  background: rgba(124, 58, 237, 0.12);
-  border: 1px solid rgba(124, 58, 237, 0.4);
-  color: var(--flyer-violet-deep);
+  background: rgba(124, 58, 237, 0.16);
+  border: 1px solid rgba(124, 58, 237, 0.45);
+  color: #c4b5fd;
 }
 
 .trial-chip-match {
@@ -901,13 +936,17 @@
   animation: flyer-pop-enter 0.22s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* Corrimiento vertical de EventDetailOverlay -- antes un -170px fijo que
-   asumia una ventana alta (desktop). Relativo al alto real del viewport
-   (vh), con piso en -170px (el valor de diseño original, para pantallas
-   altas) y techo en -55px: en un celular la ventana es mas baja, asi que
-   el mismo -170px empujaba la tarjeta hasta pisar el FilterBar. */
+/* Posiciona EventDetailOverlay centrado horizontalmente y con su borde
+   INFERIOR real (no un alto asumido) a 28px arriba del centro del mapa --
+   que es siempre donde queda el pin/cluster clickeado, ver MapController.
+   translate(-50%, -100%) ancla desde la esquina inferior-central de la
+   fila (relativo a SU propia altura, cualquiera sea), y los 28px extra
+   son el respiro sobre el pin (hasta 26px de diametro, ver makeIcon) para
+   que quede completamente visible debajo de la tarjeta. Reemplaza un
+   -170px/-55px fijo que asumia una altura de tarjeta que no siempre se
+   cumplia, y por eso el pin quedaba tapado. */
 .flyer-detail-offset {
-  transform: translateY(clamp(-170px, -17vh, -55px));
+  transform: translate(-50%, calc(-100% - 28px));
 }
 
 .flyer-chat-header {
@@ -954,6 +993,24 @@
 }
 
 .flyer-field:disabled {
+  opacity: 0.6;
+}
+
+/* select.flyer-field: el fondo casi transparente de .flyer-field (arriba)
+   funciona para <input>, pero un <select> nativo pinta la lista desplegada
+   de <option> con SU PROPIO fondo, fuera del flujo normal de la pagina --
+   con solo 6% de opacidad, ese popup se renderiza practicamente blanco (el
+   canvas por defecto del SO), y el texto color: var(--flyer-paper) (casi
+   blanco) quedaba ilegible ahi, aunque el <select> cerrado se viera bien
+   contra el modal oscuro. Un fondo solido, repetido en <option>, arregla
+   ambos estados sin tocar el resto de .flyer-field. */
+.flyer-field.flyer-select,
+.flyer-field.flyer-select option {
+  background-color: var(--flyer-ink);
+  color: var(--flyer-paper);
+}
+
+.flyer-field.flyer-select:disabled {
   opacity: 0.6;
 }
 
