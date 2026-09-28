@@ -15,7 +15,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import SQLAlchemyError
 
 from auth.dependencies import get_current_user
-from auth.email_utils import send_email
+from auth.email_utils import render_email, send_email
 from auth.google_oauth import build_login_url, exchange_code_for_profile, generate_state
 from auth.jwt_utils import (
     create_access_token, generate_refresh_token, hash_refresh_token,
@@ -365,10 +365,14 @@ def register(body: RegisterIn):
     send_email(
         to_email=body.email,
         subject="Confirmá tu cuenta en Rave Radar AR",
-        html_content=(
-            f"<p>¡Gracias por registrarte en Rave Radar AR!</p>"
-            f"<p><a href='{verify_url}'>Hacé click acá para confirmar tu cuenta</a></p>"
-            f"<p>Si no fuiste vos, podés ignorar este mail.</p>"
+        html_content=render_email(
+            heading="Confirmá tu cuenta",
+            paragraphs=[
+                "¡Gracias por registrarte en Rave Radar AR! Ya casi podés empezar a buscar fiestas.",
+                "Si no fuiste vos, podés ignorar este mail.",
+            ],
+            cta_url=verify_url,
+            cta_label="Confirmar mi cuenta",
         ),
     )
 
@@ -509,10 +513,13 @@ def forgot_password(request: Request, body: ForgotPasswordIn):
             send_email(
                 to_email=user.email,
                 subject="Tu cuenta en Rave Radar AR usa Google",
-                html_content=(
-                    "<p>Pediste recuperar tu contraseña, pero tu cuenta no tiene una propia — "
-                    "iniciaste sesión con Google. Entrá con el botón 'Continuar con Google' "
-                    "en su lugar.</p>"
+                html_content=render_email(
+                    heading="Tu cuenta usa Google",
+                    paragraphs=[
+                        "Pediste recuperar tu contraseña, pero tu cuenta no tiene una propia — "
+                        "iniciaste sesión con Google.",
+                        "Entrá con el botón “Continuar con Google” en la pantalla de inicio de sesión.",
+                    ],
                 ),
             )
             return generic_response
@@ -534,11 +541,15 @@ def forgot_password(request: Request, body: ForgotPasswordIn):
     send_email(
         to_email=body.email,
         subject="Recuperá tu contraseña en Rave Radar AR",
-        html_content=(
-            f"<p>Pediste recuperar tu contraseña.</p>"
-            f"<p><a href='{reset_url}'>Hacé click acá para elegir una nueva</a></p>"
-            f"<p>Este link expira en {PASSWORD_RESET_EXPIRE_HOURS} horas. "
-            f"Si no fuiste vos, podés ignorar este mail.</p>"
+        html_content=render_email(
+            heading="Recuperá tu contraseña",
+            paragraphs=[
+                "Pediste recuperar tu contraseña.",
+                f"Este link expira en {PASSWORD_RESET_EXPIRE_HOURS} horas. "
+                f"Si no fuiste vos, podés ignorar este mail.",
+            ],
+            cta_url=reset_url,
+            cta_label="Elegir nueva contraseña",
         ),
     )
 
