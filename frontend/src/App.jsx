@@ -171,12 +171,42 @@ function touchActivity() {
   localStorage.setItem("hasEnteredAt", Date.now().toString());
 }
 
+// Overlay de transicion para login/logout -- antes el cambio de sesion
+// era instantaneo (token puesto/sacado en el mismo tick), lo que se
+// sentia como un salto brusco al mapa. Reusa el mismo lenguaje de puntos
+// del indicador de "escribiendo" del chat (ver flyer-chat-typing-dot en
+// ChatPanel), a mayor escala, en vez de un spinner nuevo.
+function AuthTransitionOverlay({ mode }) {
+  return (
+    <div className="fixed inset-0 z-[3000] flex flex-col items-center justify-center gap-4 flyer-auth-transition">
+      <div className="flex items-center gap-2" aria-hidden="true">
+        <span className="flyer-auth-transition-dot" />
+        <span className="flyer-auth-transition-dot" />
+        <span className="flyer-auth-transition-dot" />
+      </div>
+      <p
+        role="status"
+        className="flyer-sans uppercase tracking-[0.08em] text-sm font-semibold"
+        style={{ color: "var(--flyer-paper)", opacity: 0.85 }}
+      >
+        {mode === "logout" ? "Cerrando sesión" : "Iniciando sesión"}
+      </p>
+    </div>
+  );
+}
+
+// Duracion minima que se ve el overlay de arriba, para que los puntos
+// alcancen a animarse aunque el pedido de red sea instantaneo (tipico en
+// local) -- ver handleLogout/handleAuthSuccess.
+const AUTH_TRANSITION_MS = 650;
+
 function App() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [hasEntered, setHasEntered] = useState(hasValidEntry);
   const [error, setError] = useState(null);
   const [filter, setFilter] = useState("todos");
+  const [authTransition, setAuthTransition] = useState(null); // null | "login" | "logout"
 
   const [mode, setMode] = useState("browse");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -308,10 +338,14 @@ function App() {
     }
 
     if (tokenFromUrl) {
-      setAccessToken(tokenFromUrl);
       touchActivity();
       setHasEntered(true);
       window.history.replaceState({}, "", "/");
+      setAuthTransition("login");
+      setTimeout(() => {
+        setAccessToken(tokenFromUrl);
+        setAuthTransition(null);
+      }, AUTH_TRANSITION_MS);
       return;
     }
 
@@ -373,8 +407,12 @@ function App() {
   }, [accessToken]);
 
   function handleAuthSuccess(token) {
-    setAccessToken(token);
-    setShowAuthModal(false);
+    setAuthTransition("login");
+    setTimeout(() => {
+      setAccessToken(token);
+      setShowAuthModal(false);
+      setAuthTransition(null);
+    }, AUTH_TRANSITION_MS);
   }
 
   // Actualiza currentUser directo en memoria (sin esperar un F5 ni
@@ -385,12 +423,17 @@ function App() {
   }
 
   function handleLogout() {
-    fetch(`${API_BASE}/api/auth/logout`, {
+    setAuthTransition("logout");
+    const minDelay = new Promise((resolve) => setTimeout(resolve, AUTH_TRANSITION_MS));
+    const request = fetch(`${API_BASE}/api/auth/logout`, {
       method: "POST",
       credentials: "include",
-    }).finally(() => {
+    }).catch(() => {});
+    Promise.all([request, minDelay]).then(() => {
       setAccessToken(null);
       setCurrentUser(null);
+      setShowUserPanel(false);
+      setAuthTransition(null);
     });
   }
 
@@ -441,7 +484,8 @@ function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen w-screen">
+    <>
+    <div className="flex flex-col h-screen w-screen" inert={!!authTransition}>
       <Navbar
         currentUser={currentUser}
         savedCount={savedIds.size}
@@ -527,7 +571,10 @@ function App() {
           onClose={() => setShowSavedEvents(false)}
         />
       )}
+
     </div>
+    {authTransition && <AuthTransitionOverlay mode={authTransition} />}
+    </>
   );
 }
 

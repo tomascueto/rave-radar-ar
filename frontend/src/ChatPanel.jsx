@@ -32,6 +32,51 @@ function PinIcon({ className }) {
   );
 }
 
+// Debe coincidir con MAX_EVENTS_SHOWN en rag/response_generator.py: el
+// texto del LLM da por sentado que solo estos son los que se "muestran"
+// (el resto queda para el botón "ver en el mapa" de abajo).
+const MAX_EVENTS_SHOWN = 5;
+
+function formatEventDate(isoDate) {
+  const d = new Date(isoDate);
+  const datePart = d.toLocaleDateString("es-AR", { weekday: "short", day: "2-digit", month: "2-digit" });
+  const timePart = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  return `${datePart} · ${timePart}`;
+}
+
+// Tarjeta compacta por evento dentro de la burbuja del chat -- misma
+// familia visual que EventCard (Map.jsx: nombre, fecha, venue, botón
+// "Comprar entrada" con el notch de .flyer-cta) pero sin fondo propio,
+// separada de sus vecinas con un hairline en vez de anidar otra card
+// dentro de la burbuja.
+function ChatEventRow({ event }) {
+  return (
+    <div className="px-3 py-2.5 flex flex-col gap-1">
+      <p className="font-bold text-sm leading-snug line-clamp-2" style={{ color: "var(--flyer-paper)" }}>
+        {event.name}
+      </p>
+      <p className="font-bold text-xs capitalize" style={{ color: "#c4b5fd" }}>
+        {formatEventDate(event.date_from)}
+      </p>
+      {event.venue_name && (
+        <p className="text-xs" style={{ color: "rgba(245, 241, 230, 0.6)" }}>
+          {event.venue_name}
+        </p>
+      )}
+      {event.ticket_url && (
+        <a
+          href={event.ticket_url}
+          target="_blank"
+          rel="noreferrer"
+          className="flyer-chat-cta flyer-sans self-start mt-1 text-xs font-bold uppercase tracking-wide px-3 py-1.5 transition-colors"
+        >
+          Comprar entrada
+        </a>
+      )}
+    </div>
+  );
+}
+
 export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, isOpen, onToggle }) {
   const [messages, setMessages] = useState([
     {
@@ -120,31 +165,41 @@ export default function ChatPanel({ onEventsUpdate, accessToken, userLocation, i
       </div>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-3 space-y-3 flyer-chat-scroll">
-        {messages.map((msg, i) => (
-          <div
-            key={i}
-            className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
-          >
+        {messages.map((msg, i) => {
+          const shownEvents = msg.role === "assistant" && msg.events ? msg.events.slice(0, MAX_EVENTS_SHOWN) : [];
+          return (
             <div
-              className={`flyer-sans max-w-[85%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${
-                msg.role === "user"
-                  ? "flyer-chat-bubble-user rounded-br-sm"
-                  : "flyer-chat-bubble-assistant rounded-bl-sm"
-              }`}
+              key={i}
+              className={`flex flex-col ${msg.role === "user" ? "items-end" : "items-start"}`}
             >
-              {msg.text}
-            </div>
-            {msg.role === "assistant" && msg.events && msg.events.length > 0 && (
-              <button
-                onClick={() => onEventsUpdate(msg.events)}
-                className="flyer-chat-action flyer-sans mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full transition-colors"
+              <div
+                className={`flyer-sans max-w-[85%] rounded-2xl text-sm break-words overflow-hidden ${
+                  msg.role === "user"
+                    ? "flyer-chat-bubble-user rounded-br-sm"
+                    : "flyer-chat-bubble-assistant rounded-bl-sm"
+                }`}
               >
-                <PinIcon className="w-3.5 h-3.5" />
-                Ver {msg.events.length} evento{msg.events.length !== 1 ? "s" : ""} en el mapa
-              </button>
-            )}
-          </div>
-        ))}
+                <div className="px-3 py-2 whitespace-pre-wrap">{msg.text}</div>
+                {shownEvents.length > 0 && (
+                  <div className="flex flex-col divide-y divide-white/10 border-t border-white/10">
+                    {shownEvents.map((event) => (
+                      <ChatEventRow key={event.id} event={event} />
+                    ))}
+                  </div>
+                )}
+              </div>
+              {msg.role === "assistant" && msg.events && msg.events.length > 0 && (
+                <button
+                  onClick={() => onEventsUpdate(msg.events)}
+                  className="flyer-chat-action flyer-sans mt-2 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full transition-colors"
+                >
+                  <PinIcon className="w-3.5 h-3.5" />
+                  Ver {msg.events.length} evento{msg.events.length !== 1 ? "s" : ""} en el mapa
+                </button>
+              )}
+            </div>
+          );
+        })}
         {sending && (
           <div className="flyer-chat-bubble-assistant flex items-center gap-1 px-3 py-2.5 rounded-2xl rounded-bl-sm max-w-[85%]">
             <span className="flyer-chat-typing-dot" />
