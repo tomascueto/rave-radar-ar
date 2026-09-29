@@ -75,8 +75,8 @@ def execute_sql(db: Session, filters: dict, limit: int = DEFAULT_LIMIT) -> list[
         .filter(Event.is_active == True)
     )
 
-    if "venue_id" in filters:
-        query = query.filter(Event.venue_id == filters["venue_id"])
+    if "venue_ids" in filters:
+        query = query.filter(Event.venue_id.in_(filters["venue_ids"]))
     if "city_id" in filters:
         query = query.filter(Event.city_id == filters["city_id"])
     if "date_from_start" in filters:
@@ -132,8 +132,8 @@ def execute_sql(db: Session, filters: dict, limit: int = DEFAULT_LIMIT) -> list[
 def _build_qdrant_filter(filters: dict) -> Filter:
     conditions = [FieldCondition(key="is_active", match=MatchValue(value=True))]
 
-    if "venue_id" in filters:
-        conditions.append(FieldCondition(key="venue_id", match=MatchValue(value=filters["venue_id"])))
+    if "venue_ids" in filters:
+        conditions.append(FieldCondition(key="venue_id", match=MatchAny(any=filters["venue_ids"])))
     if "city_id" in filters:
         conditions.append(FieldCondition(key="city_id", match=MatchValue(value=filters["city_id"])))
     if "genre_slugs" in filters:

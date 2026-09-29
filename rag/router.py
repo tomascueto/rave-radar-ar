@@ -248,9 +248,19 @@ def route_from_segments(
         if r.entity_type == "dj":
             filters.setdefault("dj_names", []).append(r.matched_name)
         elif r.entity_type == "venue":
-            filters["venue_id"] = r.entity_id
+            # Lista, no un solo valor -- ver comentario en
+            # ResolvedEntity/resolve_candidate: puede haber mas de un
+            # venue empatado (mismo nombre, distinta ciudad), y filtrar
+            # por "cualquiera de estos" es mas seguro que elegir uno a
+            # ciegas.
+            filters.setdefault("venue_ids", []).append(r.entity_id)
         elif r.entity_type == "genre":
-            filters.setdefault("genre_slugs", []).append(r.matched_name.lower().replace(" ", "-"))
+            # Slug REAL de la tabla genres (matched_slug), no recalculado a
+            # mano -- ver comentario en ResolvedEntity.matched_slug. El
+            # fallback solo cubre el caso defensivo de que, por algun
+            # motivo, no venga poblado.
+            slug = r.matched_slug or r.matched_name.lower().replace(" ", "-")
+            filters.setdefault("genre_slugs", []).append(slug)
         elif r.entity_type == "city":
             filters["city_id"] = r.entity_id
 

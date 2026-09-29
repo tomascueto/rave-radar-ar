@@ -22,7 +22,9 @@ delante), y el aviso de "hay más para ver en el mapa" se arma en código,
 con el número real, después de que el modelo ya redactó su parte.
 """
 from __future__ import annotations
+import os
 import random
+from dotenv import load_dotenv
 from google import genai
 from google.genai import types
 from database.models import Event
@@ -30,7 +32,34 @@ from datetime import datetime
 
 from rag.retry_helper import call_with_retry
 
+load_dotenv()
 client = genai.Client()
+
+# Modelo que redacta la respuesta final, configurable desde el .env
+# (GEMINI_GEN_MODEL) para poder probar alternativas o cambiarlo en segundos
+# si el actual se degrada o se da de baja, sin tocar codigo.
+GEN_MODEL = os.getenv("GEMINI_GEN_MODEL", "gemini-2.5-flash")
+
+
+def _generation_config() -> types.GenerateContentConfig:
+    """
+    Redactar sobre eventos que el sistema YA eligio no necesita razonamiento
+    extra, y el "thinking" por defecto agregaba decenas de segundos de espera.
+    Cada familia lo configura distinto: 2.5 usa thinking_budget (0 = apagado),
+    3.x usa thinking_level.
+    """
+    if GEN_MODEL.startswith("gemini-2.5"):
+        return types.GenerateContentConfig(
+            system_instruction=SYSTEM_PROMPT,
+            temperature=0.4,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        )
+    # Gemini 3.x: Google recomienda no tocar temperature (su razonamiento esta
+    # optimizado para el valor por defecto).
+    return types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT,
+        thinking_config=types.ThinkingConfig(thinking_level="minimal"),
+    )
 
 MAX_EVENTS_SHOWN = 5
 
@@ -107,13 +136,16 @@ Eventos disponibles (ÚNICAMENTE estos, no inventes otros):
 Redactá la respuesta para el usuario."""
     response = call_with_retry(
         client.models.generate_content,
-        model="gemini-2.5-flash",
+        model=GEN_MODEL,
         contents=prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
-            temperature=0.4,
-        ),
+        config=_generation_config(),
     )
+    um = response.usage_metadata
+    if um is not None:
+        print(
+            f"[timing] {GEN_MODEL} tokens -> prompt: {um.prompt_token_count} | "
+            f"respuesta: {um.candidates_token_count} | thinking: {um.thoughts_token_count}"
+        )
     text = response.text
 
     # El aviso de "hay mas" se agrega ACA, en codigo, con el numero real
