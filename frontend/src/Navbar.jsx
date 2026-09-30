@@ -103,6 +103,19 @@ function AuthBar({
           <span className="hidden sm:inline">Preferencias</span>
           <span className="sm:hidden">Prefs.</span>
         </button>
+        {currentUser.is_admin && (
+          // Visible SOLO como comodidad de UX -- la proteccion real vive
+          // en el backend (get_current_admin_user, ver admin/router.py).
+          // Navegacion completa (no un cambio de estado de React): /admin
+          // es una vista propia fuera del árbol de Map/Navbar, ver App.jsx.
+          <a
+            href="/admin"
+            title="Panel de administración"
+            className="trial-ghost-btn trial-sans text-xs font-medium rounded-full px-2 sm:px-3 py-2 transition-colors whitespace-nowrap"
+          >
+            Admin
+          </a>
+        )}
         <button
           onClick={onLogout}
           className="trial-ghost-btn trial-sans text-xs font-medium rounded-full px-2 sm:px-3 py-2 transition-colors whitespace-nowrap"

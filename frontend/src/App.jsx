@@ -9,6 +9,7 @@ import AuthModal from "./AuthModal";
 import UserPanel from "./UserPanel";
 import SavedEvents from "./SavedEvents";
 import ResetPasswordPage from "./ResetPasswordPage";
+import AdminPage from "./AdminPage";
 import LandingMore from "./LandingMore";
 import { useSavedEvents } from "./useSavedEvents";
 
@@ -213,6 +214,13 @@ function App() {
 
   const [accessToken, setAccessToken] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  // Se pone en true una sola vez, cuando el intento de sesion (via cookie
+  // de refresh o token en la URL) ya se resolvio, haya encontrado sesion o
+  // no -- AdminPage lo necesita para distinguir "todavia estamos
+  // averiguando quien sos" de "ya sabemos que no estas logueado", y asi no
+  // redirigir a alguien admin afuera del panel solo porque el fetch de
+  // /me todavia no volvio.
+  const [authChecked, setAuthChecked] = useState(false);
   const [showSurvey, setShowSurvey] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showUserPanel, setShowUserPanel] = useState(false);
@@ -345,6 +353,7 @@ function App() {
       setTimeout(() => {
         setAccessToken(tokenFromUrl);
         setAuthTransition(null);
+        setAuthChecked(true);
       }, AUTH_TRANSITION_MS);
       return;
     }
@@ -361,7 +370,8 @@ function App() {
       .then((data) => {
         if (data?.access_token) setAccessToken(data.access_token);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setAuthChecked(true));
   }, []);
 
   useEffect(() => {
@@ -477,6 +487,21 @@ function App() {
 
   if (window.location.pathname === "/reset-password") {
     return <ResetPasswordPage />;
+  }
+
+  if (window.location.pathname === "/admin") {
+    // Misma sesion de siempre (accessToken/currentUser ya resueltos mas
+    // arriba, cookie de refresh incluida) -- ningun mecanismo de login
+    // aparte. authResolved distingue "todavia estamos averiguando" de
+    // "ya sabemos que no hay sesion o no es admin", para no redirigir de
+    // pura carrera contra el fetch de /me.
+    return (
+      <AdminPage
+        accessToken={accessToken}
+        currentUser={currentUser}
+        authResolved={authChecked && (!accessToken || !!currentUser)}
+      />
+    );
   }
 
   if (!hasEntered) {

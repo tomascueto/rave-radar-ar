@@ -177,6 +177,10 @@ class User(Base):
     preferred_city_id = Column(UUID(as_uuid=True), ForeignKey("cities.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     role = Column(String(20), default="user")
+    # Columna agregada por la migracion 19536e2a1b9d (panel de admin) --
+    # ya aplicada en la base, faltaba declararla aca para que el ORM la
+    # exponga como atributo de Python (get_current_admin_user la lee).
+    is_admin = Column(Boolean, default=False)
     terms_accepted_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

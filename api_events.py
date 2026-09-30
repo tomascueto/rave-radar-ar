@@ -177,7 +177,7 @@ def get_map_events(
         query = db.query(Event).options(
             joinedload(Event.venue),
             joinedload(Event.genres).joinedload(EventGenre.genre),
-        )
+        ).filter(Event.is_active == True)
 
         lower_bound = date_from or datetime.now(timezone.utc)
         query = query.filter(Event.date_from >= lower_bound)

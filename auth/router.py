@@ -310,6 +310,7 @@ def get_me(user: User = Depends(get_current_user)):
         "avatar_url": user.avatar_url,
         "google_linked": google_linked,
         "preferred_city_id": str(user.preferred_city_id) if user.preferred_city_id else None,
+        "is_admin": user.is_admin,
     }
 
 
