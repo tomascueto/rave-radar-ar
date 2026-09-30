@@ -1,7 +1,191 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useModalA11y } from "./useModalA11y";
 
 const API_BASE = "http://localhost:8000";
+
+function ChevronDownIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+// Reemplaza el <select> nativo -- en mobile (iOS Safari sobre todo, Android
+// Chrome en menor medida) el picker de ciudad se dibuja con el sheet/menu
+// del propio sistema operativo, que ignora casi todo el CSS que le pongamos
+// a <option> (background-color incluido, aunque SI funcione en desktop):
+// queda una lista blanca del SO flotando sobre el modal oscuro de la app,
+// sin ningun control de estilo posible desde aca -- no es un bug de
+// nuestro CSS, es un techo real de la plataforma. Portal a document.body
+// (no un dropdown position:absolute adentro del modal) porque
+// PreferredCitySection vive dentro del area con overflow-y-auto de
+// ProfileSection -- un panel ahi quedaria recortado por ese mismo overflow
+// en cuanto el trigger no estuviera pegado arriba del todo (mismo
+// problema, mismo motivo, que ya aparecio con EventDetailOverlay en el
+// mapa: ver Map.jsx).
+function CitySelect({ id, cities, value, onChange, disabled }) {
+  const [open, setOpen] = useState(false);
+  const [highlighted, setHighlighted] = useState(0);
+  const [panelStyle, setPanelStyle] = useState(null);
+  const triggerRef = useRef(null);
+  const listRef = useRef(null);
+
+  // "Sin preferencia" fija arriba, fuera del orden -- mismo criterio que
+  // tenia el <select> nativo que reemplaza. Memoizado: sin esto, un array
+  // nuevo en cada render reinstalaba los listeners del efecto de abajo en
+  // cada tecla de flecha (options esta en sus deps).
+  const options = useMemo(
+    () => [
+      { id: "", name: "Sin preferencia" },
+      ...[...cities].sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" })),
+    ],
+    [cities]
+  );
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((c) => (c.id || null) === (value || null))
+  );
+  const selected = options[selectedIndex];
+
+  function computePosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const preferredMaxHeight = 240;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const spaceAbove = rect.top;
+    // Se abre para arriba solo si abajo genuinamente no entra Y arriba hay
+    // mas lugar -- evita que un trigger a mitad de pantalla abra para
+    // arriba sin necesidad solo porque "spaceAbove > spaceBelow" por poco.
+    const openUpward = spaceBelow < preferredMaxHeight && spaceAbove > spaceBelow;
+    setPanelStyle({
+      position: "fixed",
+      left: rect.left,
+      width: rect.width,
+      ...(openUpward
+        ? { bottom: window.innerHeight - rect.top + 4, maxHeight: Math.max(120, Math.min(preferredMaxHeight, spaceAbove - 8)) }
+        : { top: rect.bottom + 4, maxHeight: Math.max(120, Math.min(preferredMaxHeight, spaceBelow - 8)) }),
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+    computePosition();
+
+    function handleReposition() {
+      computePosition();
+    }
+    function handleClickOutside(e) {
+      if (triggerRef.current?.contains(e.target) || listRef.current?.contains(e.target)) return;
+      setOpen(false);
+    }
+    function handleKeyDown(e) {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlighted((h) => Math.min(h + 1, options.length - 1));
+      } else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlighted((h) => Math.max(h - 1, 0));
+      } else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const opt = options[highlighted];
+        onChange(opt.id || null);
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    }
+
+    window.addEventListener("resize", handleReposition);
+    window.addEventListener("scroll", handleReposition, true);
+    document.addEventListener("mousedown", handleClickOutside);
+    // window, no document, y captura -- el modal que envuelve este campo
+    // (useModalA11y) tiene su PROPIO listener de Escape en document con
+    // captura, montado antes que este (el modal ya esta abierto cuando el
+    // usuario recien abre el desplegable). Dos listeners en el MISMO nodo
+    // y fase disparan en orden de registro, asi que el del modal ganaba
+    // siempre pase lo que pase aca adentro -- Escape cerraba el modal
+    // ENTERO en vez de solo el desplegable. En captura el evento baja
+    // window -> document -> ... -> el resto, asi que uno en window
+    // dispara antes que cualquiera en document sin importar cuando se
+    // registro cada uno -- el stopPropagation de aca abajo si alcanza a
+    // frenarlo.
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      window.removeEventListener("resize", handleReposition);
+      window.removeEventListener("scroll", handleReposition, true);
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleKeyDown, true);
+    };
+    // highlighted, options, selectedIndex y onChange deliberadamente en
+    // las deps -- Enter/Espacio del listener de keydown necesita leer su
+    // valor mas reciente en cada uno, y reinstalar el listener en cada
+    // cambio es mas simple y mas barato que un ref paralelo por cada uno
+    // solo para esto.
+  }, [open, highlighted, options, selectedIndex, onChange]);
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        id={id}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-activedescendant={open ? `city-option-${highlighted}` : undefined}
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) setHighlighted(selectedIndex);
+        }}
+        className="flyer-sans flyer-field w-full px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-60 flex items-center justify-between gap-2 text-left"
+      >
+        <span className="truncate">{selected.name}</span>
+        <ChevronDownIcon className={`w-4 h-4 flex-shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open &&
+        panelStyle &&
+        createPortal(
+          <ul
+            ref={listRef}
+            role="listbox"
+            aria-label="Ciudad preferida"
+            className="flyer-select-panel flyer-sans rounded-lg overflow-y-auto py-1 z-[3000] fixed"
+            style={panelStyle}
+          >
+            {options.map((c, i) => (
+              <li key={c.id || "none"}>
+                <button
+                  id={`city-option-${i}`}
+                  type="button"
+                  role="option"
+                  aria-selected={i === selectedIndex}
+                  onMouseEnter={() => setHighlighted(i)}
+                  onClick={() => {
+                    onChange(c.id || null);
+                    setOpen(false);
+                    triggerRef.current?.focus();
+                  }}
+                  className={`flyer-select-option w-full text-left px-3 py-2.5 text-sm transition-colors ${
+                    i === highlighted ? "flyer-select-option-active" : ""
+                  } ${i === selectedIndex ? "font-semibold" : ""}`}
+                >
+                  {c.name}
+                </button>
+              </li>
+            ))}
+          </ul>,
+          document.body
+        )}
+    </>
+  );
+}
 
 const TABS = [
   { key: "perfil", label: "Perfil" },
@@ -32,27 +216,16 @@ function PreferredCitySection({ cityId, onChange, disabled }) {
 
   return (
     <div>
-      <label className="flyer-sans flyer-text-faint text-xs uppercase tracking-wide block mb-1.5">
+      <label htmlFor="preferred-city-trigger" className="flyer-sans flyer-text-faint text-xs uppercase tracking-wide block mb-1.5">
         Ciudad preferida
       </label>
-      <select
-        value={cityId || ""}
-        onChange={(e) => onChange(e.target.value || null)}
+      <CitySelect
+        id="preferred-city-trigger"
+        cities={cities}
+        value={cityId}
+        onChange={onChange}
         disabled={disabled || loadingCities}
-        className="flyer-sans flyer-field flyer-select w-full px-3 py-2 text-sm rounded-lg transition-colors disabled:opacity-60"
-      >
-        <option value="">Sin preferencia</option>
-        {/* "Sin preferencia" queda fija arriba, fuera del orden -- el resto
-            se ordena alfabeticamente sin distinguir mayusculas/acentos, no
-            por como lo haya mandado el backend. */}
-        {[...cities]
-          .sort((a, b) => a.name.localeCompare(b.name, "es", { sensitivity: "base" }))
-          .map((city) => (
-            <option key={city.id} value={city.id}>
-              {city.name}
-            </option>
-          ))}
-      </select>
+      />
       <p className="flyer-sans flyer-text-faint text-xs mt-1.5">
         Ordena primero los eventos de esa ciudad cuando pedís un género en el chat.
       </p>

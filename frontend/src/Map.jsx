@@ -800,10 +800,63 @@ function ChevronIcon({ direction = "left", className }) {
 //   NO cierra -- perder el carrusel entero obligaria a volver al chat y
 //   pedir los eventos de nuevo. Solo las flechas, la X, o cambiar de
 //   filtro lo cierran.
+// Transform base de la fila (tarjeta + flechas): centrada en el pin/cluster
+// (que flyTo ya dejo en el centro exacto del contenedor, ver mas abajo) y
+// anclada desde su propio borde inferior hacia arriba, 28px de respiro
+// sobre el pin. Vive en JS (no en la clase CSS .flyer-detail-offset que
+// tenia antes) porque el clamp de viewport de abajo necesita compoenerse
+// con ESTE mismo transform en una sola propiedad -- un transform inline
+// pisaria por completo al de una clase CSS separada.
+const DETAIL_BASE_TRANSFORM = "translate(-50%, calc(-100% - 28px))";
+
 function EventDetailOverlay({
   ev, isChatMode, dismissOnOutsideClick, activeIndex, total, onNext, onPrev, onClose, genreWeights,
   isSaved, onToggleSave,
 }) {
+  // El mapa siempre lleva el pin/cluster clickeado al CENTRO del contenedor
+  // (ver flyTo en MapController) y esta fila se ancla hacia arriba desde
+  // ahi -- una altura de tarjeta razonable en desktop (donde el area de
+  // mapa mide varios cientos de px) entra siempre en la mitad superior sin
+  // problema. En mobile el area visible del mapa es mucho mas baja (navbar
+  // + FilterBar le sacan una porcion fija mucho mayor, proporcionalmente,
+  // que en desktop), asi que esa mitad superior puede terminar siendo mas
+  // baja que la tarjeta misma -- sin este clamp, el contenedor padre
+  // (overflow-hidden, ver App.jsx) recorta el borde superior entero,
+  // incluido el boton de cerrar (×), dejandolo inalcanzable. Mismo
+  // problema en el eje horizontal si el pin cae cerca del borde izquierdo
+  // o derecho con el carrusel (flechas) abierto. Se mide DESPUES de cada
+  // render (sin array de dependencias) restando el offset ya aplicado en
+  // ESE render para encontrar la posicion "natural" (sin clamp) y corregir
+  // desde ahi -- converge solo, sin loop, porque una vez que el offset
+  // corregido coincide con el medido no se vuelve a llamar setState.
+  const wrapperRef = useRef(null);
+  const [clampOffset, setClampOffset] = useState({ x: 0, y: 0 });
+
+  useLayoutEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!ev || !wrapper) return;
+    const container = wrapper.parentElement;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+    const rect = wrapper.getBoundingClientRect();
+    const naturalLeft = rect.left - clampOffset.x;
+    const naturalTop = rect.top - clampOffset.y;
+    const naturalRight = rect.right - clampOffset.x;
+    const naturalBottom = rect.bottom - clampOffset.y;
+    const margin = 12;
+    let dx = 0;
+    let dy = 0;
+    if (naturalLeft < containerRect.left + margin) dx = containerRect.left + margin - naturalLeft;
+    else if (naturalRight > containerRect.right - margin) dx = containerRect.right - margin - naturalRight;
+    if (naturalTop < containerRect.top + margin) dy = containerRect.top + margin - naturalTop;
+    else if (naturalBottom > containerRect.bottom - margin) dy = containerRect.bottom - margin - naturalBottom;
+    if (dx !== clampOffset.x || dy !== clampOffset.y) setClampOffset({ x: dx, y: dy });
+    // ev/activeIndex/total: remedir cuando cambia que se muestra (tamano
+    // de tarjeta distinto). clampOffset.x/y: remedir despues de corregir,
+    // para confirmar que la correccion alcanzo -- la segunda vez ya no
+    // vuelve a llamar setState (ver comentario de arriba) y ahi queda.
+  }, [ev, activeIndex, total, clampOffset.x, clampOffset.y]);
+
   if (!ev) return null;
 
   return (
@@ -813,30 +866,12 @@ function EventDetailOverlay({
       }`}
       onClick={dismissOnOutsideClick ? onClose : undefined}
     >
-      {/* Posicionada por su propio transform (ver .flyer-detail-offset), no
-          por flex-centering del padre -- flyTo (MapController) deja siempre
-          el pin/cluster clickeado en el centro exacto del contenedor, y esta
-          fila se ancla desde SU PROPIO borde inferior hacia arriba de ese
-          punto. Como translateY(-100%) es relativo a la altura real de la
-          fila, el pin queda libre debajo de la tarjeta sin importar cuanto
-          mida esta (genero, aviso de ubicacion, etc.) -- un offset fijo en
-          px, lo que habia antes, no podia garantizar eso para toda altura
-          de tarjeta. */}
       <div
-        className="absolute top-1/2 left-1/2 flex items-center gap-3 pointer-events-auto flyer-detail-offset"
+        ref={wrapperRef}
+        className="absolute top-1/2 left-1/2 pointer-events-auto"
+        style={{ transform: `${DETAIL_BASE_TRANSFORM} translate(${clampOffset.x}px, ${clampOffset.y}px)` }}
         onClick={(e) => e.stopPropagation()}
       >
-        {isChatMode && (
-          <button
-            onClick={onPrev}
-            disabled={activeIndex === 0}
-            aria-label="Evento anterior"
-            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
-          >
-            <ChevronIcon direction="left" className="w-4 h-4" />
-          </button>
-        )}
-
         <div className="relative">
           <button
             onClick={onClose}
@@ -852,18 +887,37 @@ function EventDetailOverlay({
             </span>
           )}
           <EventCard ev={ev} genreWeights={genreWeights} isSaved={isSaved} onToggleSave={onToggleSave} />
+          {/* Flechas ADENTRO del ancho de la tarjeta (no a los costados,
+              como antes) -- a los costados, tarjeta + flechas + gaps
+              sumaban ~352px, mas ancho que el viewport de la mayoria de
+              los celulares (~360-400px con margen incluido): en el mas
+              angosto de los presets estandar (iPhone SE, 375px) ya
+              quedaban literalmente cortadas a la mitad en cada borde, y
+              el clamp de arriba no puede arreglar eso -- corrige la
+              posicion de UN bloque rigido, no achica su ancho. Puestas
+              adentro, el ancho total nunca supera el de la tarjeta sola
+              (256px), que entra holgado en cualquier telefono real. */}
+          {isChatMode && (
+            <>
+              <button
+                onClick={onPrev}
+                disabled={activeIndex === 0}
+                aria-label="Evento anterior"
+                className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
+              >
+                <ChevronIcon direction="left" className="w-4 h-4" />
+              </button>
+              <button
+                onClick={onNext}
+                disabled={activeIndex === total - 1}
+                aria-label="Evento siguiente"
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
+              >
+                <ChevronIcon direction="right" className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
-
-        {isChatMode && (
-          <button
-            onClick={onNext}
-            disabled={activeIndex === total - 1}
-            aria-label="Evento siguiente"
-            className="flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
-          >
-            <ChevronIcon direction="right" className="w-4 h-4" />
-          </button>
-        )}
       </div>
     </div>
   );
@@ -1110,7 +1164,7 @@ export default function Map({
         onClose={handleOverlayClose}
         genreWeights={genreWeights}
         isSaved={!!(displayedEvent && savedEventIds.has(displayedEvent.id))}
-        onToggleSave={displayedEvent ? () => onToggleSaved(displayedEvent.id) : undefined}
+        onToggleSave={displayedEvent ? () => onToggleSaved(displayedEvent.id, displayedEvent) : undefined}
       />
     </div>
   );

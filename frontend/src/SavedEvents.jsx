@@ -72,8 +72,8 @@ export default function SavedEvents({
                   ev={ev}
                   genreWeights={genreWeights}
                   isSaved={true}
-                  onToggleSave={() => onToggleSaved(ev.id)}
-                  onRemove={() => onToggleSaved(ev.id)}
+                  onToggleSave={() => onToggleSaved(ev.id, ev)}
+                  onRemove={() => onToggleSaved(ev.id, ev)}
                 />
               ))}
             </div>

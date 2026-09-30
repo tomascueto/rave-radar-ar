@@ -1057,22 +1057,26 @@
   opacity: 0.6;
 }
 
-/* select.flyer-field: el fondo casi transparente de .flyer-field (arriba)
-   funciona para <input>, pero un <select> nativo pinta la lista desplegada
-   de <option> con SU PROPIO fondo, fuera del flujo normal de la pagina --
-   con solo 6% de opacidad, ese popup se renderiza practicamente blanco (el
-   canvas por defecto del SO), y el texto color: var(--flyer-paper) (casi
-   blanco) quedaba ilegible ahi, aunque el <select> cerrado se viera bien
-   contra el modal oscuro. Un fondo solido, repetido en <option>, arregla
-   ambos estados sin tocar el resto de .flyer-field. */
-.flyer-field.flyer-select,
-.flyer-field.flyer-select option {
-  background-color: var(--flyer-ink);
+/* Panel de CitySelect (UserPanel.jsx) -- reemplaza al <select> nativo que
+   estaba aca antes. El <select> cerrado se veia bien contra el modal
+   oscuro (background-color propio via .flyer-field), pero la lista de
+   <option> desplegada es un popup nativo del sistema operativo, fuera del
+   flujo normal de la pagina: en mobile (iOS Safari sobre todo) el CSS de
+   <option> no se aplica ahi, y quedaba una lista practicamente blanca
+   sobre el modal oscuro. CitySelect es un listbox propio, con fondo
+   solido igual al resto del chrome oscuro de la app. */
+.flyer-select-panel {
+  background: var(--flyer-ink);
+  border: 1px solid rgba(124, 58, 237, 0.35);
+  box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.5);
+}
+
+.flyer-select-option {
   color: var(--flyer-paper);
 }
 
-.flyer-field.flyer-select:disabled {
-  opacity: 0.6;
+.flyer-select-option-active {
+  background: rgba(124, 58, 237, 0.18);
 }
 
 .flyer-chat-scroll::-webkit-scrollbar {

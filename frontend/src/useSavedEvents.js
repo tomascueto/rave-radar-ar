@@ -143,8 +143,16 @@ export function useSavedEvents({ accessToken, events, isBroadView, eventsLoading
     }
   }, [isGuest, isBroadView, eventsLoading, events]);
 
+  // eventData (el objeto completo del evento, si quien llama lo tiene a
+  // mano -- EventCard siempre lo tiene) es opcional y SOLO se usa para
+  // guardar uno nuevo: accountIds se actualiza optimista igual que antes,
+  // pero el detalle completo (accountEvents) recien se trae del server en
+  // el proximo fetch. Sin esto, un evento recien guardado no aparecia en
+  // "Eventos guardados" hasta ese refetch -- ver savedEvents mas abajo,
+  // que ahora filtra accountEvents por accountIds en vez de devolverlo
+  // crudo, y por eso necesita que el nuevo id tenga tambien su detalle.
   const toggle = useCallback(
-    (eventId) => {
+    (eventId, eventData) => {
       if (accessToken) {
         const wasSaved = accountIds?.has(eventId);
         setAccountIds((prev) => {
@@ -153,6 +161,11 @@ export function useSavedEvents({ accessToken, events, isBroadView, eventsLoading
           else next.add(eventId);
           return next;
         });
+        if (!wasSaved && eventData) {
+          setAccountEvents((prev) =>
+            prev.some((ev) => ev.id === eventId) ? prev : [...prev, eventData]
+          );
+        }
         fetch(`${API_BASE}/api/users/me/saved-events/${eventId}`, {
           method: wasSaved ? "DELETE" : "POST",
           headers: { Authorization: `Bearer ${accessToken}` },
@@ -171,10 +184,15 @@ export function useSavedEvents({ accessToken, events, isBroadView, eventsLoading
 
   const isSaved = useCallback((eventId) => savedIds.has(eventId), [savedIds]);
 
+  // Se deriva de accountIds (no se devuelve accountEvents crudo) para que
+  // reaccione al toggle igual que savedIds/isSaved -- son la misma fuente
+  // de verdad. Antes esto devolvia accountEvents tal cual, asi que sacar
+  // o agregar un evento desde el corazon actualizaba el contador (savedIds)
+  // pero no esta lista, y quedaba desincronizada hasta un F5.
   const savedEvents = useMemo(() => {
-    if (!isGuest) return accountEvents;
-    return events.filter((ev) => guestIds.includes(ev.id));
-  }, [isGuest, accountEvents, events, guestIds]);
+    if (isGuest) return events.filter((ev) => guestIds.includes(ev.id));
+    return accountEvents.filter((ev) => accountIds?.has(ev.id));
+  }, [isGuest, accountEvents, accountIds, events, guestIds]);
 
   return { savedIds, isSaved, toggle, savedEvents, loading, isGuest, migrating };
 }
