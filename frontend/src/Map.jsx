@@ -7,6 +7,8 @@ import "leaflet/dist/leaflet.css";
 export const DEFAULT_CENTER = [-34.6037, -58.3816];
 const DEFAULT_ZOOM = 12;
 
+const API_BASE = "http://localhost:8000";
+
 const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY;
 export const TILE_URL = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${CARTO_API_KEY}`;
 export const TILE_ATTRIBUTION =
@@ -200,6 +202,78 @@ function makeUserLocationIcon() {
   });
 }
 
+// Normaliza para comparar busqueda vs. nombre/venue/genero: minusculas +
+// sin diacriticos (NFD separa la letra de su tilde/diéresis como
+// caracter combinante aparte, ̀-ͯ los barre) -- asi "cordoba"
+// encuentra "Córdoba" en cualquiera de los dos lados de la comparacion.
+// Se aplica siempre a ambos lados (nunca solo al query), porque el dato
+// que viene del evento tambien puede traer tildes.
+function normalizeSearchText(str) {
+  return str
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase();
+}
+
+// Coincide si el texto normalizado aparece en el nombre del evento, el
+// venue, O CUALQUIERA de sus generos -- basta con uno solo (no los tres a
+// la vez). Sobre datos que ya trae el evento del mapa, sin pedir nada
+// nuevo al backend.
+function eventMatchesSearch(ev, normalizedQuery) {
+  if (!normalizedQuery) return true;
+  const haystacks = [ev.name, ev.venue_name, ...(ev.genres || [])];
+  return haystacks.some((h) => h && normalizeSearchText(h).includes(normalizedQuery));
+}
+
+function SearchIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M20 20L15.5 15.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+// Buscador de eventos -- mismo lenguaje visual que FilterBar/GenreFilterMenu
+// (trial-pill oscura, texto flyer-sans), ubicado debajo del FilterBar de
+// fecha: mismo eje horizontal (centrado), como una segunda fila de chrome
+// del mapa en vez de competir por espacio con las 5 píldoras de fecha (que
+// ya scrollean horizontal en mobile) o con la columna de género/afinidad a
+// la derecha. outline-none en el <input> se reemplaza por un anillo en el
+// contenedor entero via :focus-within (ver .flyer-search-pill en
+// index.css) -- asi el foco se ve como el borde redondeado de la pildora,
+// no como un rectángulo del input recortado por el border-radius del
+// padre.
+function MapSearchBar({ value, onChange }) {
+  return (
+    <div className="flyer-search-pill trial-pill absolute top-16 left-1/2 -translate-x-1/2 z-[1000] rounded-full flex items-center gap-2 px-3.5 py-2 w-[min(320px,calc(100vw-32px))]">
+      <SearchIcon className="w-4 h-4 flyer-text-muted flex-shrink-0" />
+      <label htmlFor="flyer-map-search" className="sr-only">
+        Buscar eventos por nombre, lugar o género
+      </label>
+      <input
+        id="flyer-map-search"
+        name="map-search"
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Nombre, lugar o género…"
+        autoComplete="off"
+        className="flyer-sans flyer-search-input bg-transparent border-none text-xs flex-1 min-w-0"
+      />
+      {value && (
+        <button
+          onClick={() => onChange("")}
+          aria-label="Limpiar búsqueda"
+          className="flyer-pill-text flex-shrink-0 rounded-full w-5 h-5 flex items-center justify-center text-sm leading-none transition-colors"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
 function FilterBar({ active, onChange }) {
   // Thumb violeta que se desliza al filtro activo -- se mide contra el
   // ancho real de cada boton (las etiquetas no son todas del mismo largo)
@@ -266,6 +340,191 @@ function FilterBar({ active, onChange }) {
           {f.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+function CheckIcon({ className }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M5 12.5L9.5 17L19 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function FunnelIcon({ className }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M3.5 4.5h17L14 12.5v6l-4 2v-8L3.5 4.5z"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// Filtro por genero -- puramente de frontend: no dispara ningun fetch,
+// solo esconde/muestra Markers ya cargados (ver visibleEvents en Map). El
+// catalogo se pide una sola vez (misma fuente que alimenta GenreSurvey,
+// /api/users/genres/catalog) en vez de derivarlo de "events": derivarlo
+// de los eventos visibles cambiaria la lista disponible con cada
+// zoom/paneo, lo cual seria inconsistente (a pedido explicito del
+// usuario). Colapsado por default -- con ~50 generos en el catalogo, un
+// listado siempre abierto al costado del mapa taparia demasiado.
+function GenreFilterMenu({ genres, selected, onToggle, onClear }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    function handleClickOutside(e) {
+      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false);
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [open]);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-controls="flyer-genre-filter-panel"
+        aria-label={`Géneros, filtrar por género${selected.size > 0 ? `, ${selected.size} seleccionados` : ""}`}
+        className="trial-pill flyer-pill-text flex items-center gap-1.5 rounded-full pl-3 pr-2.5 py-2 transition-colors"
+      >
+        <FunnelIcon className="w-3.5 h-3.5" />
+        <span className="flyer-sans text-xs font-medium">Géneros</span>
+        {selected.size > 0 && (
+          <span className="flyer-genre-badge flyer-sans" aria-hidden="true">
+            {selected.size}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          id="flyer-genre-filter-panel"
+          role="group"
+          aria-label="Filtrar pines por género"
+          className="trial-pill absolute right-full top-0 mr-2 rounded-2xl p-3 w-56"
+        >
+          <div className="flex items-center justify-between mb-2 gap-2">
+            <span className="flyer-sans flyer-text-muted text-[11px] uppercase tracking-wide">
+              Género
+            </span>
+            {selected.size > 0 && (
+              <button
+                onClick={onClear}
+                className="flyer-sans flyer-pill-text text-[11px] underline underline-offset-2 transition-colors"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+          {/* Lista vertical con alto fijo (no un flex-wrap de píldoras) --
+              a pedido explicito: con el catalogo completo (~50 generos) el
+              panel tiene que mostrar como maximo 6-7 a la vez y scrollear
+              el resto, y con filas de un genero por linea ese numero es
+              directo de fijar (max-h calibrado al alto real de una fila +
+              gap). Un flex-wrap no permite ese control: cuantos entran por
+              fila depende del largo de cada nombre, asi que "6-7 visibles"
+              nunca seria consistente. */}
+          <div className="flex flex-col gap-1 max-h-64 overflow-y-auto flyer-scroll-hidden pr-0.5">
+            {genres.map((g) => {
+              const isSelected = selected.has(g.id);
+              return (
+                <button
+                  key={g.id}
+                  onClick={() => onToggle(g.id)}
+                  aria-pressed={isSelected}
+                  title={g.name}
+                  className={`flyer-sans flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                    isSelected ? "flyer-toggle-chip-active" : "flyer-toggle-chip"
+                  }`}
+                >
+                  <span className="truncate text-left min-w-0 flex-1">{g.name}</span>
+                  {isSelected && <CheckIcon className="w-3.5 h-3.5 flex-shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Interruptor "Solo alta afinidad" -- reusa el mismo umbral que ya separa
+// el color de coincidencia (verde fuerte/verde-amarillo) del de
+// no-coincidencia (naranja) en affinityColor: ratio > 0. No define un
+// corte nuevo. El padre (Map) no renderiza este control cuando no hay
+// preferencias guardadas, en vez de mostrarlo deshabilitado -- ver
+// isPersonalized mas abajo.
+function AffinitySwitch({ checked, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={onChange}
+      className="trial-pill flyer-pill-text flex items-center gap-2 rounded-full pl-3 pr-1.5 py-1.5 transition-colors"
+    >
+      <span className="flyer-sans text-xs font-medium">Solo alta afinidad</span>
+      <span
+        className={`flyer-switch-track ${checked ? "flyer-switch-track-on" : ""}`}
+        aria-hidden="true"
+      >
+        <span className="flyer-switch-thumb" />
+      </span>
+    </button>
+  );
+}
+
+// Agrupa los dos filtros puramente de frontend (genero, afinidad) en una
+// sola columna a la derecha, centrada verticalmente -- lejos del FilterBar
+// de fecha (arriba, centro) y del boton de ubicacion/ZoomSlider (abajo).
+// Oculto por completo en modo chat: activeIndex ahi indexa directo sobre
+// "events" tal como lo devolvio el chat, y filtrar esa lista rompería esa
+// correspondencia -- estos dos filtros son para explorar el mapa, no para
+// podar resultados que el chat ya curó.
+function MapFiltersPanel({
+  genres, selectedGenreIds, onToggleGenre, onClearGenres, showAffinitySwitch, highAffinityOnly, onToggleAffinity,
+}) {
+  return (
+    // top-[42%] en vez de top-1/2 -- un poco mas arriba del centro exacto,
+    // a pedido explicito: con el catalogo completo (~50 generos) el panel
+    // desplegado de GenreFilterMenu abre hacia abajo (ver top-0 ahi), y
+    // centrado en 50% dejaba muy poco margen debajo antes del borde
+    // inferior de la pantalla, sobre todo en mobile (navbar + este offset
+    // le comen mas proporcion a la altura disponible que en desktop).
+    <div className="absolute top-[42%] right-3 sm:right-4 -translate-y-1/2 z-[1000] flex flex-col items-end gap-2">
+      {showAffinitySwitch && (
+        <AffinitySwitch checked={highAffinityOnly} onChange={onToggleAffinity} />
+      )}
+      <GenreFilterMenu
+        genres={genres}
+        selected={selectedGenreIds}
+        onToggle={onToggleGenre}
+        onClear={onClearGenres}
+      />
     </div>
   );
 }
@@ -949,6 +1208,35 @@ export default function Map({
   // que se cierra explícitamente.
   const [clusterCarousel, setClusterCarousel] = useState(null);
 
+  // Filtros de genero y afinidad (ver MapFiltersPanel) -- catalogo pedido
+  // una sola vez, misma fuente que GenreSurvey, nunca derivado de "events"
+  // (ver comentario en GenreFilterMenu).
+  const [genreCatalog, setGenreCatalog] = useState([]);
+  useEffect(() => {
+    fetch(`${API_BASE}/api/users/genres/catalog`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then(setGenreCatalog)
+      .catch(() => {});
+  }, []);
+
+  const [selectedGenreIds, setSelectedGenreIds] = useState(() => new Set());
+  function toggleGenre(id) {
+    setSelectedGenreIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  const [highAffinityOnly, setHighAffinityOnly] = useState(false);
+
+  // Buscador (ver MapSearchBar) -- normalizado UNA vez por tecla acá,
+  // no adentro del .filter() de abajo, para no repetir el normalize()
+  // del query en cada evento de la lista en cada render.
+  const [searchQuery, setSearchQuery] = useState("");
+  const normalizedSearchQuery = normalizeSearchText(searchQuery.trim());
+
   const baseDisplayedEvent = isChatMode ? activeEvent : selectedEvent;
   const displayedEvent = clusterCarousel
     ? clusterCarousel.events[clusterCarousel.index]
@@ -987,21 +1275,17 @@ export default function Map({
     }
   }
 
-  // Ids ya vistos en el mapa -- se actualiza DESPUES de cada render donde
-  // "events" cambio, nunca durante. Esto es lo que permite distinguir un
-  // pin genuinamente nuevo (recien llegado con un cambio de filtro o de
-  // resultados del chat) de un re-render por otro motivo (seleccionar en
-  // el carrusel, o que lleguen los pesos de afinidad mas tarde) -- ese
-  // segundo caso jamas debe repetir la animacion de entrada.
-  const prevEventIdsRef = useRef(new Set());
-  useEffect(() => {
-    prevEventIdsRef.current = new Set(events.map((ev) => ev.id));
-  }, [events]);
-
   // isPersonalized: hay al menos una preferencia real guardada -- no
   // solo "esta logueado", para no pintar todo de naranja a alguien que
-  // nunca completo la encuesta (ver mas abajo, affinityColor).
+  // nunca completo la encuesta (ver mas abajo, affinityColor). Tambien
+  // decide si el interruptor de afinidad tiene sentido: sin preferencias
+  // guardadas no hay nada que separar en "alta/baja", asi que el
+  // interruptor ni se renderiza (ver MapFiltersPanel) y se fuerza apagado
+  // aca por si quedo prendido de una sesion anterior con preferencias.
   const isPersonalized = genreWeights && Object.keys(genreWeights).length > 0;
+  useEffect(() => {
+    if (!isPersonalized && highAffinityOnly) setHighAffinityOnly(false);
+  }, [isPersonalized, highAffinityOnly]);
 
   // Afinidad calculada ACA, en cada render, a partir de los pesos mas
   // recientes -- no viene precalculada del backend. Esto es lo que
@@ -1025,9 +1309,57 @@ export default function Map({
     return matchCount / ev.genre_ids.length;
   }
 
+  // Filtros de genero/afinidad/busqueda -- puramente de presentacion,
+  // nunca tocan "events" (App.jsx sigue calculando eventos
+  // guardados/isBroadView sobre la lista completa que devolvio
+  // /api/events/map). Combinados con Y logico: cada evento visible tiene
+  // que pasar los tres a la vez, ninguno reemplaza a otro. El corte de
+  // "alta afinidad" es el mismo ratio > 0 que ya separa el color de
+  // coincidencia (verde fuerte/verde-amarillo) del de no-coincidencia
+  // (naranja) en affinityColor -- no un umbral nuevo.
+  // No se aplican en modo chat: activeIndex ahi indexa directo sobre
+  // "events" tal como los devolvio el chat, y podar esa lista rompería esa
+  // correspondencia (ver MapFiltersPanel).
+  const filteredEvents = events.filter((ev) => {
+    if (selectedGenreIds.size > 0) {
+      const matchesGenre = ev.genre_ids?.some((gid) => selectedGenreIds.has(gid));
+      if (!matchesGenre) return false;
+    }
+    if (highAffinityOnly && affinityScoreFor(ev) <= 0) return false;
+    if (!eventMatchesSearch(ev, normalizedSearchQuery)) return false;
+    return true;
+  });
+  const visibleEvents = isChatMode ? events : filteredEvents;
+
+  // Ids ya vistos en el mapa -- se actualiza DESPUES de cada render donde
+  // "visibleEvents" cambio, nunca durante. Esto es lo que permite
+  // distinguir un pin genuinamente nuevo (recien llegado con un cambio de
+  // filtro de fecha/genero/afinidad, o de resultados del chat) de un
+  // re-render por otro motivo (seleccionar en el carrusel, o que lleguen
+  // los pesos de afinidad mas tarde) -- ese segundo caso jamas debe
+  // repetir la animacion de entrada.
+  const prevEventIdsRef = useRef(new Set());
+  useEffect(() => {
+    prevEventIdsRef.current = new Set(visibleEvents.map((ev) => ev.id));
+  }, [visibleEvents]);
+
   return (
     <div className="relative h-full w-full">
       <FilterBar active={filter} onChange={onFilterChange} />
+
+      {!isChatMode && <MapSearchBar value={searchQuery} onChange={setSearchQuery} />}
+
+      {!isChatMode && (
+        <MapFiltersPanel
+          genres={genreCatalog}
+          selectedGenreIds={selectedGenreIds}
+          onToggleGenre={toggleGenre}
+          onClearGenres={() => setSelectedGenreIds(new Set())}
+          showAffinitySwitch={isPersonalized}
+          highAffinityOnly={highAffinityOnly}
+          onToggleAffinity={() => setHighAffinityOnly((v) => !v)}
+        />
+      )}
 
       <button
         onClick={onLocateMe}
@@ -1049,7 +1381,7 @@ export default function Map({
       </button>
 
       {loading && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-[1000] flyer-pill flex items-center gap-2 px-3.5 py-1.5 rounded-full">
+        <div className="absolute top-32 left-1/2 -translate-x-1/2 z-[1000] flyer-pill flex items-center gap-2 px-3.5 py-1.5 rounded-full">
           <RadarIcon className="w-3.5 h-3.5 flyer-radar-spin" style={{ color: "var(--flyer-violet)" }} />
           <span className="flyer-sans flyer-text-muted text-xs uppercase tracking-wide">
             Escaneando la ciudad…
@@ -1057,7 +1389,7 @@ export default function Map({
         </div>
       )}
 
-      {!loading && events.length === 0 && (
+      {!loading && visibleEvents.length === 0 && (
         <div className="absolute inset-0 z-[900] flex items-center justify-center px-6 pointer-events-none">
           <div className="flyer-pill rounded-2xl px-6 py-5 max-w-[240px] text-center pointer-events-auto">
             <div
@@ -1099,13 +1431,13 @@ export default function Map({
         )}
 
         <EventClusterLayer
-          events={events}
+          events={visibleEvents}
           setClusterCarousel={setClusterCarousel}
           clusterCarousel={clusterCarousel}
           isPersonalized={isPersonalized}
           genreWeights={genreWeights}
         >
-          {events.map((ev, idx) => {
+          {visibleEvents.map((ev, idx) => {
             const ratio = affinityScoreFor(ev);
             // Mismo color que ya decide makeIcon, pero guardado ademas en
             // un option propio del marker -- es lo unico que le permite a
