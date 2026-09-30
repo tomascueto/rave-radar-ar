@@ -46,6 +46,8 @@ from database.models import Conversation, ConversationMessage, Event, EventGenre
 from rag.agent import run_agent
 from users.router import get_user_genre_weights, router as users_router
 
+from admin.router import router as admin_router
+
 app = FastAPI(title="Rave Radar AR - API")
 
 # El limiter en si se define en auth/router.py (donde viven los endpoints
@@ -63,6 +65,7 @@ app.add_middleware(
 )
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(admin_router)
 
 # Se cargan UNA sola vez al arrancar el servidor, no en cada request del
 # chat -- cargar el modelo de embeddings por consulta agregaria varios

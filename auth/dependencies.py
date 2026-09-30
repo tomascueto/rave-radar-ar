@@ -63,3 +63,17 @@ def get_current_user_optional(
     except jwt.InvalidTokenError:
         return None
     return db.query(User).filter(User.id == user_id, User.is_active == True).first()
+
+
+def get_current_admin_user(user: User = Depends(get_current_user)) -> User:
+    """
+    Exige que el usuario autenticado sea administrador. Reutiliza
+    get_current_user tal cual (valida el JWT exactamente igual que
+    siempre) y agrega una verificacion adicional encima: sin esta capa,
+    cualquier usuario logueado podria llegar a los endpoints de admin con
+    solo conocer la URL. La proteccion real vive aca, en el backend --
+    nunca alcanza con que el frontend oculte un link en el menu.
+    """
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="No tenés permisos de administrador")
+    return user
