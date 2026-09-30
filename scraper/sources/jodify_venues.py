@@ -13,7 +13,9 @@ from pathlib import Path
 
 import requests
 from geoalchemy2.functions import ST_GeomFromText
+from requests.adapters import HTTPAdapter
 from sqlalchemy.orm import Session
+from urllib3.util.retry import Retry
 
 from database.connection import SessionLocal
 from database.models import Venue
@@ -36,6 +38,26 @@ HEADERS = {
     ),
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+
+
+def _build_session() -> requests.Session:
+    """Mismo mecanismo de reintentos que ya usa jodify.py para el scraper
+    -- sin esto, una falla de red transitoria en medio de cientos de
+    requests secuenciales deja ese venue sin coordenadas hasta la próxima
+    corrida, en vez de resolverse sola en el momento."""
+    session = requests.Session()
+    session.headers.update(HEADERS)
+    retry = Retry(
+        total=3,
+        backoff_factor=1.0,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+        raise_on_status=False,
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session
 
 
 def extract_venue_from_html(html: str) -> dict | None:
@@ -95,8 +117,7 @@ def enrich_venues() -> None:
     event_ids = [ev["id"] for ev in events if ev.get("id")]
     log.info("%d eventos a procesar.", len(event_ids))
 
-    session = requests.Session()
-    session.headers.update(HEADERS)
+    session = _build_session()
     db: Session = SessionLocal()
 
     updated = 0
@@ -126,7 +147,7 @@ def enrich_venues() -> None:
                          i, len(event_ids), updated, skipped, errors)
 
         except requests.RequestException as e:
-            log.warning("Error de red en evento %s: %s", event_id, e)
+            log.warning("Error de red en evento %s (tras reintentos): %s", event_id, e)
             errors += 1
 
         time.sleep(DELAY)
