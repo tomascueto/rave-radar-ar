@@ -154,6 +154,8 @@
     Cinco capas, de la ingesta de datos al navegador: qué escribe qué, qué es determinístico
     y qué depende de un LLM. El Agente RAG está resumido acá &mdash; el detalle de sus 8 nodos
     de <code>LangGraph</code> está en <a href="rag_pipeline_architecture.html">rag_pipeline_architecture.html</a>.
+    Incluye el orquestador diario (<code>run_pipeline.py</code>) y el panel de administración
+    (<code>admin/router.py</code> + <code>AdminPage.jsx</code>), protegido de punta a punta por <code>is_admin</code>.
     Hacé click en cualquier nodo para ver su detalle.
   </p>
   <div class="legend" role="group" aria-label="Filtrar por capa">
@@ -170,8 +172,8 @@
   <div class="diagram-card">
     <div class="diagram-scroll">
       <figure class="diagram">
-        <svg viewBox="0 0 1200 1464" role="img"
-             aria-label="Arquitectura de rave-radar-ar en cinco capas apiladas: Ingesta (scrapers, offline) escribe en Almacenamiento (PostgreSQL+PostGIS y Qdrant); Almacenamiento es leído por el Agente RAG (segment, route+execute, generate); el Agente RAG devuelve la respuesta al Backend API (FastAPI: api_events.py, auth/router.py, users/router.py); el Backend API responde al Frontend (React). Una flecha punteada aparte conecta el Backend API directo con PostgreSQL, saltando al Agente RAG, para auth, el mapa y las preferencias.">
+        <svg viewBox="0 0 1200 1624" role="img"
+             aria-label="Arquitectura de rave-radar-ar en cinco capas apiladas: Ingesta (scrapers, offline, mas el orquestador run_pipeline.py) escribe en Almacenamiento (PostgreSQL+PostGIS y Qdrant); Almacenamiento es leído por el Agente RAG (segment, route+execute, generate); el Agente RAG devuelve la respuesta al Backend API (FastAPI: api_events.py, auth/router.py, users/router.py, admin/router.py); el Backend API responde al Frontend (React), que ahora incluye AdminPage.jsx protegida por is_admin. Una flecha punteada aparte conecta el Backend API directo con PostgreSQL, saltando al Agente RAG, para auth, el mapa y las preferencias.">
           <defs>
             <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
               <path d="M0,0 L10,5 L0,10 z" fill="var(--edge)"></path>
@@ -188,11 +190,11 @@
           <rect class="frame" x="60" y="662" width="1100" height="180" rx="16"></rect>
           <text class="frame-label" x="76" y="686">Agente RAG &middot; rag/agent.py (LangGraph StateGraph, resumido)</text>
 
-          <rect class="frame" x="60" y="912" width="1100" height="200" rx="16"></rect>
+          <rect class="frame" x="60" y="912" width="1100" height="360" rx="16"></rect>
           <text class="frame-label" x="76" y="936">Backend API &middot; FastAPI</text>
 
-          <rect class="frame" x="60" y="1182" width="1100" height="262" rx="16"></rect>
-          <text class="frame-label" x="76" y="1206">Frontend &middot; React + Vite (frontend/src/)</text>
+          <rect class="frame" x="60" y="1342" width="1100" height="262" rx="16"></rect>
+          <text class="frame-label" x="76" y="1366">Frontend &middot; React + Vite (frontend/src/)</text>
 
           <!-- ===== edges ===== -->
           <path class="edge" d="M250,322 L250,432" marker-end="url(#arrow)"></path>
@@ -213,8 +215,8 @@
           <path class="edge" d="M880,842 L610,952" marker-end="url(#arrow)"></path>
           <text class="edge-label" x="700" y="905">response_text + events (run_agent)</text>
 
-          <path class="edge" d="M610,1112 L610,1182" marker-end="url(#arrow)"></path>
-          <text class="edge-label" x="610" y="1150" text-anchor="middle">fetch: /api/events/map &middot; /api/chat &middot; /api/auth/* &middot; /api/users/*</text>
+          <path class="edge" d="M610,1272 L610,1342" marker-end="url(#arrow)"></path>
+          <text class="edge-label" x="610" y="1310" text-anchor="middle">fetch: /api/events/map &middot; /api/chat &middot; /api/auth/* &middot; /api/users/* &middot; /api/admin/*</text>
 
           <path class="edge bypass" d="M80,1022 L40,1022 L40,502 L80,502" marker-end="url(#arrow)"></path>
           <text class="edge-label" x="30" y="770" transform="rotate(-90 30 770)" text-anchor="middle">lecturas/escrituras directas &mdash; auth, /api/events/map, preferencias</text>
@@ -272,6 +274,16 @@
             <text class="file" x="456" y="265">qdrant.py</text>
             <text class="detail" x="456" y="287">embeddings (e5-large)</text>
           </g>
+
+          <g class="node cat-struct" data-node="ing_pipeline" tabindex="0" role="button" aria-label="Nodo Orquestador run_pipeline">
+            <rect class="box" x="620" y="210" width="160" height="92" rx="10"></rect>
+            <text class="title" x="636" y="232">Orquestador</text>
+            <text class="file" x="636" y="250">run_pipeline.py</text>
+            <text class="detail" x="636" y="270">scrape&rarr;carga&rarr;</text>
+            <text class="detail" x="636" y="282">desactiva&rarr;enrich</text>
+          </g>
+
+          <text class="edge-label" x="76" y="346">run_pipeline.py encadena Scraper Jodify &rarr; enrich_venues &rarr; desactivar vencidos (nuevo). Avisa por mail a los admins si falla o da 0 eventos.</text>
 
           <!-- ===== nodes: Almacenamiento ===== -->
           <g class="node cat-data" data-node="db_postgres" tabindex="0" role="button" aria-label="Nodo PostgreSQL + PostGIS">
@@ -340,54 +352,71 @@
             <text class="detail" x="818" y="1038">eventos guardados, perfil</text>
           </g>
 
+          <g class="node cat-det" data-node="api_admin" tabindex="0" role="button" aria-label="Nodo admin/router.py">
+            <rect class="box" x="80" y="1112" width="340" height="140" rx="10"></rect>
+            <text class="title" x="98" y="1141">admin/router.py</text>
+            <text class="file" x="98" y="1161">admin/router.py (nuevo)</text>
+            <text class="detail" x="98" y="1185">/api/admin/* &middot; CRUD eventos,</text>
+            <text class="detail" x="98" y="1198">venues y coordenadas</text>
+          </g>
+
+          <text class="edge-label" x="460" y="1195">protegido por get_current_admin_user (auth/dependencies.py) &mdash; solo usuarios con is_admin=true</text>
+
           <!-- ===== nodes: Frontend ===== -->
           <g class="node cat-fe" data-node="fe_app" tabindex="0" role="button" aria-label="Nodo App.jsx">
-            <rect class="box" x="80" y="1222" width="160" height="92" rx="10"></rect>
-            <text class="title" x="96" y="1248">App.jsx</text>
-            <text class="file" x="96" y="1266">+ main.jsx</text>
-            <text class="detail" x="96" y="1289">estado raíz</text>
+            <rect class="box" x="80" y="1382" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="1408">App.jsx</text>
+            <text class="file" x="96" y="1426">+ main.jsx</text>
+            <text class="detail" x="96" y="1449">estado raíz</text>
           </g>
 
           <g class="node cat-fe" data-node="fe_navbar" tabindex="0" role="button" aria-label="Nodo Navbar.jsx">
-            <rect class="box" x="260" y="1222" width="160" height="92" rx="10"></rect>
-            <text class="title" x="276" y="1248">Navbar.jsx</text>
-            <text class="file" x="276" y="1266">frontend/src/</text>
-            <text class="detail" x="276" y="1289">sesión persistente</text>
+            <rect class="box" x="260" y="1382" width="160" height="92" rx="10"></rect>
+            <text class="title" x="276" y="1408">Navbar.jsx</text>
+            <text class="file" x="276" y="1426">frontend/src/</text>
+            <text class="detail" x="276" y="1449">sesión persistente</text>
           </g>
 
           <g class="node cat-fe" data-node="fe_auth" tabindex="0" role="button" aria-label="Nodo AuthModal.jsx">
-            <rect class="box" x="440" y="1222" width="160" height="92" rx="10"></rect>
-            <text class="title" x="456" y="1248">AuthModal.jsx</text>
-            <text class="file" x="456" y="1266">+ ResetPasswordPage</text>
-            <text class="detail" x="456" y="1289">login, registro, Google</text>
+            <rect class="box" x="440" y="1382" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="1408">AuthModal.jsx</text>
+            <text class="file" x="456" y="1426">+ ResetPasswordPage</text>
+            <text class="detail" x="456" y="1449">login, registro, Google</text>
           </g>
 
           <g class="node cat-fe" data-node="fe_survey" tabindex="0" role="button" aria-label="Nodo GenreSurvey.jsx">
-            <rect class="box" x="620" y="1222" width="160" height="92" rx="10"></rect>
-            <text class="title" x="636" y="1248">GenreSurvey.jsx</text>
-            <text class="file" x="636" y="1266">frontend/src/</text>
-            <text class="detail" x="636" y="1289">onboarding + edición</text>
+            <rect class="box" x="620" y="1382" width="160" height="92" rx="10"></rect>
+            <text class="title" x="636" y="1408">GenreSurvey.jsx</text>
+            <text class="file" x="636" y="1426">frontend/src/</text>
+            <text class="detail" x="636" y="1449">onboarding + edición</text>
           </g>
 
           <g class="node cat-fe" data-node="fe_map" tabindex="0" role="button" aria-label="Nodo Map.jsx">
-            <rect class="box" x="80" y="1332" width="160" height="92" rx="10"></rect>
-            <text class="title" x="96" y="1358">Map.jsx</text>
-            <text class="file" x="96" y="1376">frontend/src/</text>
-            <text class="detail" x="96" y="1399">Leaflet, clustering</text>
+            <rect class="box" x="80" y="1492" width="160" height="92" rx="10"></rect>
+            <text class="title" x="96" y="1518">Map.jsx</text>
+            <text class="file" x="96" y="1536">frontend/src/</text>
+            <text class="detail" x="96" y="1559">Leaflet, clustering</text>
           </g>
 
           <g class="node cat-fe" data-node="fe_chat" tabindex="0" role="button" aria-label="Nodo ChatPanel.jsx">
-            <rect class="box" x="260" y="1332" width="160" height="92" rx="10"></rect>
-            <text class="title" x="276" y="1358">ChatPanel.jsx</text>
-            <text class="file" x="276" y="1376">frontend/src/</text>
-            <text class="detail" x="276" y="1399">chat flotante</text>
+            <rect class="box" x="260" y="1492" width="160" height="92" rx="10"></rect>
+            <text class="title" x="276" y="1518">ChatPanel.jsx</text>
+            <text class="file" x="276" y="1536">frontend/src/</text>
+            <text class="detail" x="276" y="1559">chat flotante</text>
           </g>
 
           <g class="node cat-fe" data-node="fe_userpanel" tabindex="0" role="button" aria-label="Nodo UserPanel.jsx">
-            <rect class="box" x="440" y="1332" width="160" height="92" rx="10"></rect>
-            <text class="title" x="456" y="1358">UserPanel.jsx</text>
-            <text class="file" x="456" y="1376">frontend/src/</text>
-            <text class="detail" x="456" y="1399">perfil y preferencias</text>
+            <rect class="box" x="440" y="1492" width="160" height="92" rx="10"></rect>
+            <text class="title" x="456" y="1518">UserPanel.jsx</text>
+            <text class="file" x="456" y="1536">frontend/src/</text>
+            <text class="detail" x="456" y="1559">perfil y preferencias</text>
+          </g>
+
+          <g class="node cat-fe" data-node="fe_admin" tabindex="0" role="button" aria-label="Nodo AdminPage.jsx">
+            <rect class="box" x="620" y="1492" width="160" height="92" rx="10"></rect>
+            <text class="title" x="636" y="1518">AdminPage.jsx</text>
+            <text class="file" x="636" y="1536">+ AdminLocationPicker</text>
+            <text class="detail" x="636" y="1559">vista /admin</text>
           </g>
         </svg>
         <figcaption>
@@ -413,7 +442,7 @@
         <dt>Ingesta</dt><dd>scripts de scraper/, se corren a mano</dd>
         <dt>Almacenamiento</dt><dd>Postgres+PostGIS (relacional) y Qdrant (vectorial)</dd>
         <dt>Agente RAG</dt><dd>resumido &mdash; detalle completo en el otro diagrama</dd>
-        <dt>Backend API</dt><dd>FastAPI, un solo proceso (api_events.py)</dd>
+        <dt>Backend API</dt><dd>FastAPI, un solo proceso (api_events.py + 3 routers, incluido admin)</dd>
         <dt>Frontend</dt><dd>React + Vite, solo habla con el Backend API</dd>
       </dl>
       <p class="note">
@@ -433,9 +462,15 @@
       'load_jodify.py hace commit evento por evento, así un fallo puntual no descarta el resto del batch.'
     ], writes:'escribe en <b>PostgreSQL</b> (events, venues)' },
     ing_venues: { cat:'struct', title:'Venues Jodify', file:'scraper/sources/jodify_venues.py', bullets:[
-      'Extrae nombre y dirección del venue desde el HTML de cada evento.',
-      'Alimenta la tabla venues antes de la geocodificación.'
-    ], writes:'escribe en <b>PostgreSQL</b> (venues)' },
+      'Extrae coordenadas reales del venue desde el HTML de la página propia de cada evento (enrich_venues()).',
+      'Ahora tiene sesión HTTP con reintentos y backoff (mismo mecanismo que el scraper principal), para que una falla de red transitoria no deje un venue sin coordenadas hasta la próxima corrida.',
+      'Lo invoca run_pipeline.py como paso 4/4, ya no hace falta correrlo a mano.'
+    ], writes:'escribe en <b>PostgreSQL</b> (venues.coordinates)' },
+    ing_pipeline: { cat:'struct', title:'Orquestador diario', file:'scraper/run_pipeline.py', bullets:[
+      'Un solo comando (python -m scraper.run_pipeline) encadena: scrapear Jodify, cargar a Postgres, desactivar eventos con fecha ya pasada (deactivate_past_events.py, nuevo) y enriquecer venues con coordenadas reales.',
+      'No reemplaza a los scripts individuales, los reutiliza llamando a sus funciones en orden.',
+      'Si el scraper devuelve 0 eventos (posible token vencido) o el pipeline lanza una excepción, avisa por mail a todos los usuarios is_admin en vez de fallar en silencio.'
+    ], writes:'orquesta los pasos de arriba, no escribe nada por sí mismo' },
     ing_geocode: { cat:'struct', title:'Geocodificación', file:'scraper/geocode_venues.py', bullets:[
       'Convierte la dirección de cada venue en coordenadas (lat/lng).'
     ], writes:'actualiza <b>venues.geom</b>' },
@@ -474,23 +509,32 @@
       'Gemini redacta la respuesta final en español rioplatense, con reglas anti-alucinación y un tope de 5 eventos visibles para el modelo.'
     ], writes:'devuelve response_text + events a api_events.py' },
     api_events: { cat:'det', title:'api_events.py', file:'FastAPI app principal', bullets:[
-      'GET /api/events/map devuelve eventos con coordenadas para el mapa, con auth opcional para personalizar por afinidad de género.',
+      'GET /api/events/map devuelve eventos con coordenadas para el mapa, filtrando is_active=true, con auth opcional para personalizar por afinidad de género.',
       'POST /api/chat invoca run_agent() (rag/agent.py) y devuelve texto + eventos recomendados en el mismo formato que el mapa.',
-      'Carga el modelo de embeddings y el cliente de Qdrant una sola vez al arrancar el servidor, no en cada request.'
+      'Carga el modelo de embeddings y el cliente de Qdrant una sola vez al arrancar el servidor, no en cada request.',
+      'Registra los cuatro routers: auth_router, users_router, admin_router (admin/router.py) y el propio rag/router.py del chat.'
     ], writes:'llama al Agente RAG, lee PostgreSQL' },
     api_auth: { cat:'det', title:'auth/router.py', file:'+ dependencies.py, jwt_utils.py, password_utils.py, google_oauth.py, email_utils.py', bullets:[
       '/api/auth/*: registro y login por contraseña, login con Google OAuth, refresh token en cookie httponly, logout.',
-      'Verificación de email y forgot/reset/change password; email_utils.py manda los correos transaccionales vía SendGrid.'
+      'Verificación de email y forgot/reset/change password; email_utils.py manda los correos transaccionales vía SendGrid.',
+      '/api/auth/me ahora también devuelve is_admin, que el frontend usa solo como comodidad de UX (mostrar u ocultar el link a /admin) &mdash; la protección real vive en el backend.'
     ], writes:'lee/escribe PostgreSQL (User, RefreshToken, OAuthAccount, tokens)' },
     api_users: { cat:'det', title:'users/router.py', file:'users/router.py', bullets:[
       '/api/users/*: catálogo de géneros, lectura y guardado de preferencias (genre-weights), eventos guardados, nombre de perfil.',
       'get_user_genre_weights() es lo que consume rerank_by_preference_node del agente para reordenar resultados por afinidad.'
     ], writes:'lee/escribe PostgreSQL (UserGenrePreference, UserSavedEvent)' },
+    api_admin: { cat:'det', title:'admin/router.py', file:'admin/router.py (nuevo)', bullets:[
+      'Todos los endpoints dependen de get_current_admin_user (auth/dependencies.py) &mdash; comprueba is_admin=true en el backend, nunca confía en lo que muestra el frontend.',
+      '/api/admin/stats: métricas reales (eventos activos/pasados, cobertura de precio, distribución de precisión de geocodificación).',
+      '/api/admin/events: listar (con búsqueda y paginado), editar y dar de baja eventos (soft delete vía is_active=false, nunca un DELETE de fila).',
+      '/api/admin/venues: buscar o crear venues, y corregir coordenadas de un venue existente haciendo click en un mapa (AdminLocationPicker.jsx), marcando precision=\'manual\'.'
+    ], writes:'lee/escribe PostgreSQL (Event, Venue)' },
     fe_app: { cat:'fe', title:'App.jsx', file:'+ main.jsx (entry point)', bullets:[
       'Componente raíz: mantiene el estado de sesión, chat, mapa y pesos de género, y orquesta el resto de los componentes.'
     ], writes:'fetch a /api/events/map y /api/auth/me al montar' },
     fe_navbar: { cat:'fe', title:'Navbar.jsx', file:'frontend/src/Navbar.jsx', bullets:[
-      'Muestra el estado de sesión (logueado o no) y dispara el AuthModal para login/logout.'
+      'Muestra el estado de sesión (logueado o no) y dispara el AuthModal para login/logout.',
+      'Si currentUser.is_admin es true, muestra un link a /admin &mdash; solo comodidad visual, la protección real está en el backend (admin/router.py).'
     ], writes:'' },
     fe_auth: { cat:'fe', title:'AuthModal.jsx', file:'+ ResetPasswordPage.jsx', bullets:[
       'Formularios de login, registro, forgot/reset password y login con Google, todos en el mismo modal reusable.',
@@ -507,7 +551,12 @@
     ], writes:'POST /api/chat' },
     fe_userpanel: { cat:'fe', title:'UserPanel.jsx', file:'frontend/src/UserPanel.jsx', bullets:[
       'Panel de perfil: nombre, preferencias de género (reusa GenreSurvey) y eventos guardados.'
-    ], writes:'GET/PUT /api/users/me/*' }
+    ], writes:'GET/PUT /api/users/me/*' },
+    fe_admin: { cat:'fe', title:'AdminPage.jsx', file:'+ AdminLocationPicker.jsx (nuevo)', bullets:[
+      'Vista propia en /admin (navegación completa, fuera del árbol de Map/Navbar), no un cambio de estado de React.',
+      'Tabla de eventos con búsqueda, edición inline y soft delete; AdminLocationPicker.jsx es un mapa Leaflet chico para elegir coordenadas con un click al crear un venue o corregir uno existente.',
+      'authResolved distingue "todavía estamos averiguando la sesión" de "ya sabemos que no hay sesión o no es admin", para no redirigir de pura carrera contra el fetch de /me.'
+    ], writes:'GET/PUT/DELETE /api/admin/*' }
   };
 
   var svg = document.querySelector('svg');

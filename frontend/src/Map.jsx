@@ -1437,23 +1437,23 @@ function EventDetailOverlay({
             </span>
           )}
           <EventCard ev={ev} genreWeights={genreWeights} isSaved={isSaved} onToggleSave={onToggleSave} />
-          {/* Flechas ADENTRO del ancho de la tarjeta (no a los costados,
-              como antes) -- a los costados, tarjeta + flechas + gaps
-              sumaban ~352px, mas ancho que el viewport de la mayoria de
-              los celulares (~360-400px con margen incluido): en el mas
-              angosto de los presets estandar (iPhone SE, 375px) ya
-              quedaban literalmente cortadas a la mitad en cada borde, y
-              el clamp de arriba no puede arreglar eso -- corrige la
-              posicion de UN bloque rigido, no achica su ancho. Puestas
-              adentro, el ancho total nunca supera el de la tarjeta sola
-              (256px), que entra holgado en cualquier telefono real. */}
+          {/* Flechas como fila propia DEBAJO de toda la tarjeta, ya no
+              flotando encima del medio (como antes) -- ahi caian sobre el
+              fondo oscuro de trial-card, casi el mismo tono que
+              flyer-icon-btn, se perdian por bajo contraste Y tapaban
+              nombre/venue/fecha. Aca abajo quedan sobre el mapa (claro),
+              mismo tratamiento que ya usan el boton de cerrar y el badge
+              X/N (por eso esos dos SI se ven bien). w-64 = mismo ancho que
+              EventCard, para no reabrir el bug de mobile que motivo
+              ponerlas "adentro" en su momento (tarjeta + flechas a los
+              costados no entraban en un iPhone SE de 375px). */}
           {isChatMode && (
-            <>
+            <div className="w-64 flex items-center justify-between mt-2">
               <button
                 onClick={onPrev}
                 disabled={activeIndex === 0}
                 aria-label="Evento anterior"
-                className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
+                className="w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
               >
                 <ChevronIcon direction="left" className="w-4 h-4" />
               </button>
@@ -1461,11 +1461,11 @@ function EventDetailOverlay({
                 onClick={onNext}
                 disabled={activeIndex === total - 1}
                 aria-label="Evento siguiente"
-                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
+                className="w-9 h-9 flex items-center justify-center rounded-full flyer-icon-btn disabled:opacity-30 transition-colors"
               >
                 <ChevronIcon direction="right" className="w-4 h-4" />
               </button>
-            </>
+            </div>
           )}
         </div>
       </div>
