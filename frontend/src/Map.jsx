@@ -1,6 +1,7 @@
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import MarkerClusterGroup from "react-leaflet-cluster";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -881,6 +882,237 @@ function FlyerPlaceholderIcon({ className }) {
   );
 }
 
+// "HH:MM" local del venue a partir del ISO que devuelve Open-Meteo
+// (timezone=auto, sin offset) -- se parsea el string a mano, sin pasar por
+// new Date() para la hora, porque eso lo reinterpretaria en el huso horario
+// del NAVEGADOR, no el del evento. El dia (para el nombre del dia) si usa
+// Date, pero solo con la parte de fecha (hora fija a medianoche) para que
+// no corra de dia por huso horario.
+function formatHourLabel(iso) {
+  const [datePart, timePart] = iso.split("T");
+  const hhmm = timePart ? timePart.slice(0, 5) : "";
+  const weekday = new Date(`${datePart}T00:00:00`).toLocaleDateString("es-AR", { weekday: "short" });
+  return `${weekday} ${hhmm}`;
+}
+
+// Codigo WMO (el mismo estandar que usa weather_utils.py en el backend,
+// ver WMO_CONDITIONS ahi) -> emoji. Un dibujo, no la palabra -- a pedido
+// explicito, mas legible de un vistazo que texto en una tarjeta chica.
+// "condition" (texto) sigue viajando desde el backend solo para
+// accesibilidad (aria-label/title), nunca se muestra como texto visible.
+const WMO_EMOJI = {
+  0: "☀️", 1: "🌤️", 2: "⛅", 3: "☁️",
+  45: "🌫️", 48: "🌫️",
+  51: "🌦️", 53: "🌦️", 55: "🌦️", 56: "🌧️", 57: "🌧️",
+  61: "🌧️", 63: "🌧️", 65: "🌧️", 66: "🌧️", 67: "🌧️",
+  71: "🌨️", 73: "🌨️", 75: "🌨️", 77: "🌨️", 85: "🌨️", 86: "🌨️",
+  80: "🌦️", 81: "🌧️", 82: "⛈️",
+  95: "⛈️", 96: "⛈️", 99: "⛈️",
+};
+
+function weatherCodeToEmoji(code) {
+  return WMO_EMOJI[code] ?? "🌡️";
+}
+
+// Clima de un evento guardado -- cada tarjeta de SavedEvents.jsx pide el
+// suyo por separado (GET .../saved-events/{id}/weather), no como parte del
+// listado general: así cada card resuelve a su propio ritmo en vez de que
+// una sola llamada lenta frene a todas. Requiere sesion (el endpoint es
+// /api/users/me/..., no hay variante de invitado) -- sin accessToken ni se
+// intenta. `enabled` es isSavedListCard: en el carrusel del mapa/chat el
+// hook se sigue llamando (regla de hooks), pero no hace ningun fetch.
+function useEventWeather(eventId, accessToken, enabled) {
+  const [state, setState] = useState({ status: "idle" });
+
+  useEffect(() => {
+    if (!enabled || !accessToken) {
+      setState({ status: "idle" });
+      return;
+    }
+
+    let cancelled = false;
+    setState({ status: "loading" });
+    fetch(`${API_BASE}/api/users/me/saved-events/${eventId}/weather`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then((res) => (res.ok ? res.json() : Promise.reject()))
+      .then((data) => {
+        if (cancelled) return;
+        if (data.available) setState({ status: "available", summary: data.summary, hourly: data.hourly });
+        else setState({ status: "unavailable", reason: data.reason });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ status: "error" });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [eventId, accessToken, enabled]);
+
+  return state;
+}
+
+// Cuadradito de clima -- vive junto al venue/fecha (ver EventCard), en el
+// espacio que ahi quedaba vacio. Cerrado: rango de temperatura (min/max,
+// separados por "/") + un emoji con la condicion MAS SEVERA de la ventana
+// del evento (ya resuelta asi por el backend, ver
+// weather_utils.get_event_weather) -- nunca un promedio, una tormenta
+// puntual a las 3am importa mas que horas despejadas antes. Clickeable:
+// el mismo cuadrado se expande (w-full fuerza el salto de linea dentro del
+// flex-wrap del padre) mostrando el detalle hora por hora.
+// Detalle hora por hora -- flota por ENCIMA de la tarjeta via portal
+// (createPortal a document.body) en vez de empujar su contenido hacia
+// abajo. Necesario porque .flyer-card usa clip-path para el corte de
+// esquina (ver index.css): cualquier hijo posicionado que se saliera de la
+// caja de la tarjeta quedaria recortado por ese mismo clip-path, como si
+// fuera overflow:hidden -- un popover "normal" (absolute dentro de la
+// tarjeta) se habria cortado apenas la tarjeta no tuviera mas alto que
+// darle. Un portal esquiva eso por completo: ya no es descendiente de la
+// tarjeta, asi que ningun clip-path ni overflow de ningun ancestro lo
+// afecta. Posicion fixed, calculada desde el boton -- se cierra solo con
+// scroll/resize en vez de re-calcularse, total es un solo click volver a
+// abrirlo ya en su lugar correcto.
+function WeatherHourlyPopover({ anchorRef, hourly, onClose, panelId }) {
+  const panelRef = useRef(null);
+  const [pos, setPos] = useState(null);
+
+  useLayoutEffect(() => {
+    const btn = anchorRef.current;
+    if (!btn) return;
+    const rect = btn.getBoundingClientRect();
+    const width = 224;
+    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+    setPos({ top: rect.bottom + 6, left, width });
+  }, [anchorRef]);
+
+  useEffect(() => {
+    const handlePointerDown = (e) => {
+      if (panelRef.current?.contains(e.target) || anchorRef.current?.contains(e.target)) return;
+      onClose();
+    };
+    // capture:true -- los eventos de scroll no burbujean, pero SI se
+    // escuchan en fase de captura desde un ancestro (como window), asi que
+    // esto agarra igual el scroll del contenedor interno del modal de
+    // "Eventos guardados" (overflow-y-auto), no solo el de la ventana.
+    // PERO el propio popover tambien scrollea adentro (la lista hora por
+    // hora, max-h-56 overflow-y-auto) -- sin el chequeo de abajo, scrollear
+    // ESA lista disparaba este mismo handler y se cerraba solo, bug
+    // reportado como "no me deja scrollear, me saca a la seccion de
+    // eventos". Solo cierra si el scroll vino de AFUERA del popover.
+    const handleScroll = (e) => {
+      if (panelRef.current?.contains(e.target)) return;
+      onClose();
+    };
+    // "focusin" (burbujea, a diferencia de "focus") -- cierra con Tab
+    // tambien: nada adentro del popover es enfocable (son divs de solo
+    // lectura), asi que Tab con el popover abierto mueve el foco al
+    // siguiente control de la tarjeta (ej. "Comprar entrada") dejandolo
+    // flotando sin relacion con el foco actual si no se cierra solo.
+    const handleFocusIn = (e) => {
+      if (panelRef.current?.contains(e.target) || anchorRef.current?.contains(e.target)) return;
+      onClose();
+    };
+    // target window, no document, y con capture -- durante la fase de
+    // captura window se visita ANTES que document, asi que esto corre
+    // antes que el listener de Escape de useModalA11y (que esta en
+    // document) y, con stopPropagation, evita que ese otro handler tambien
+    // reaccione: sin esto, Escape con el popover abierto cerraba de un
+    // tiro el popover Y el modal entero de "Eventos guardados".
+    const handleKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      onClose();
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("focusin", handleFocusIn);
+    window.addEventListener("keydown", handleKeyDown, true);
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", onClose);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("focusin", handleFocusIn);
+      window.removeEventListener("keydown", handleKeyDown, true);
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", onClose);
+    };
+  }, [anchorRef, onClose]);
+
+  if (!pos) return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      id={panelId}
+      role="region"
+      aria-label="Detalle de clima por hora"
+      style={{ position: "fixed", top: pos.top, left: pos.left, width: pos.width }}
+      className="flyer-weather-hourly flyer-sans z-[2100] rounded-lg overflow-hidden max-h-56 overflow-y-auto"
+    >
+      {hourly.map((h, i) => (
+        <div
+          key={h.time}
+          className={`flex items-center justify-between gap-2 px-3 py-1.5 text-[11px] ${
+            i > 0 ? "flyer-weather-hour-row" : ""
+          }`}
+        >
+          <span className="flyer-card-ink-muted font-semibold flex-shrink-0">{formatHourLabel(h.time)}</span>
+          <span className="flyer-card-ink font-semibold flex-shrink-0">{Math.round(h.temperature)}°C</span>
+          <span className="text-base leading-none flex-shrink-0" title={h.condition} aria-hidden="true">
+            {weatherCodeToEmoji(h.condition_code)}
+          </span>
+          <span className="sr-only">{h.condition}</span>
+        </div>
+      ))}
+    </div>,
+    document.body
+  );
+}
+
+function EventWeatherSquare({ weather, expanded, onToggle, onClose }) {
+  const buttonRef = useRef(null);
+  const panelId = useId();
+
+  if (weather.status === "loading") {
+    return (
+      <div
+        className="flyer-weather-square flyer-weather-skeleton flex-shrink-0 rounded-lg animate-pulse"
+        aria-hidden="true"
+      />
+    );
+  }
+
+  if (weather.status !== "available") return null;
+
+  const { summary, hourly } = weather;
+
+  return (
+    <>
+      <button
+        ref={buttonRef}
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={expanded ? panelId : undefined}
+        aria-label={`Clima durante el evento: ${Math.round(summary.temp_min)} a ${Math.round(summary.temp_max)} grados, ${summary.condition}`}
+        title={summary.condition}
+        className="flyer-weather-square flyer-sans flex-shrink-0 flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-bold transition-colors"
+      >
+        <span>{Math.round(summary.temp_min)}°/{Math.round(summary.temp_max)}°</span>
+        <span className="text-base leading-none" aria-hidden="true">{weatherCodeToEmoji(summary.condition_code)}</span>
+        <ChevronIcon
+          direction="right"
+          className={`w-2.5 h-2.5 opacity-50 flex-shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`}
+        />
+      </button>
+
+      {expanded && (
+        <WeatherHourlyPopover anchorRef={buttonRef} hourly={hourly} onClose={onClose} panelId={panelId} />
+      )}
+    </>
+  );
+}
+
 // Contenido de la tarjeta de detalle (foto, generos, boton de compra) --
 // usado tanto al explorar el mapa libremente como al navegar resultados
 // del chat: un solo componente, sin ninguna version reducida para el
@@ -893,7 +1125,7 @@ function FlyerPlaceholderIcon({ className }) {
 // (ver useSavedEvents.js: sin cuenta, guarda en localStorage), asi que
 // onToggleSave solo llega undefined cuando no hay ni siquiera un evento
 // resuelto todavia (ver EventDetailOverlay mas abajo), no por sesion.
-export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave }) {
+export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave, accessToken }) {
   // Generos del evento que tambien estan entre las preferencias guardadas
   // del usuario -- se resaltan distinto (ver .flyer-chip-match). genres y
   // genre_ids vienen del backend como arrays paralelos (mismo indice).
@@ -919,6 +1151,11 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
   // tarjeta oscura (.trial-card) en mapa/chat, porque ahi el fondo es el
   // mapa (tiles claros) y el papel se perdia contra el.
   const isSavedListCard = !!onRemove;
+
+  // Se llama siempre (regla de hooks), pero sin isSavedListCard (mapa/chat)
+  // no dispara ningun fetch -- ver useEventWeather.
+  const weather = useEventWeather(ev.id, accessToken, isSavedListCard);
+  const [weatherExpanded, setWeatherExpanded] = useState(false);
 
   return (
     // Sin h-full: en el carrusel del mapa/chat no hacia nada (el padre
@@ -968,12 +1205,31 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
       <p className="flyer-sans flyer-card-ink font-bold uppercase tracking-wide text-base leading-snug line-clamp-2 min-h-[2.75rem]">
         {ev.name}
       </p>
-      <p className="flyer-sans flyer-card-ink-muted font-bold text-sm mt-1">{ev.venue_name}</p>
-      <p className="flyer-sans flyer-card-ink-muted font-bold text-xs mt-1 capitalize">
-        {new Date(ev.date_from).toLocaleDateString("es-AR", {
-          weekday: "long", day: "2-digit", month: "2-digit",
-        })}
-      </p>
+
+      {/* El cuadradito de clima (EventWeatherSquare) cuelga del espacio
+          vacio a la derecha de venue/fecha. Su detalle hora por hora NO
+          vive aca adentro -- es un popover flotante (portal a body, ver
+          WeatherHourlyPopover) para no estirar esta tarjeta ni desalinear
+          las vecinas de la misma fila al abrirse. */}
+      <div className="flex items-start justify-between gap-2 mt-1">
+        <div className="min-w-0">
+          <p className="flyer-sans flyer-card-ink-muted font-bold text-sm">{ev.venue_name}</p>
+          <p className="flyer-sans flyer-card-ink-muted font-bold text-xs mt-1 capitalize">
+            {new Date(ev.date_from).toLocaleDateString("es-AR", {
+              weekday: "long", day: "2-digit", month: "2-digit",
+            })}
+          </p>
+        </div>
+
+        {isSavedListCard && (
+          <EventWeatherSquare
+            weather={weather}
+            expanded={weatherExpanded}
+            onToggle={() => setWeatherExpanded((v) => !v)}
+            onClose={() => setWeatherExpanded(false)}
+          />
+        )}
+      </div>
 
       {ev.genres && ev.genres.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-2">
@@ -999,6 +1255,15 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
       {ev.venue_precision === "city" && (
         <p className="flyer-sans flyer-warning text-[11px] mt-2">
           Ubicación aproximada (centro de la ciudad)
+        </p>
+      )}
+
+      {/* "Fuera de rango": el cuadradito de arriba no se muestra (no hay
+          nada que expandir), solo este aviso discreto. "sin_ubicacion" no
+          muestra nada en ningun lado -- ver useEventWeather. */}
+      {isSavedListCard && weather.status === "unavailable" && weather.reason === "fuera_de_rango" && (
+        <p className="flyer-sans flyer-card-ink-muted text-[11px] italic mt-2">
+          Pronóstico disponible más cerca de la fecha
         </p>
       )}
 
@@ -1039,7 +1304,7 @@ export function EventCard({ ev, genreWeights, onRemove, isSaved, onToggleSave })
 function ChevronIcon({ direction = "left", className }) {
   const d = direction === "left" ? "M15 6L9 12L15 18" : "M9 6L15 12L9 18";
   return (
-    <svg viewBox="0 0 24 24" fill="none" className={className} xmlns="http://www.w3.org/2000/svg">
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
       <path d={d} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
