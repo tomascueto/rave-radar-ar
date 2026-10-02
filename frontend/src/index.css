@@ -936,6 +936,47 @@
   color: var(--flyer-violet-deep);
 }
 
+/* Clima de "Eventos guardados" (EventWeatherSquare, Map.jsx) -- cuadradito
+   chico que cuelga del espacio vacio junto a venue/fecha, mismo tinte
+   violeta tenue que .flyer-chip, dentro de .flyer-card (fondo claro). */
+.flyer-weather-square {
+  background: rgba(124, 58, 237, 0.08);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  color: var(--flyer-ink);
+}
+
+.flyer-weather-square:hover {
+  background: rgba(124, 58, 237, 0.14);
+}
+
+/* Mismo tamaño que .flyer-weather-square en su estado cerrado -- evita que
+   el resto de la tarjeta salte de lugar cuando el fetch resuelve. */
+.flyer-weather-skeleton {
+  width: 4.5rem;
+  height: 1.75rem;
+  background: rgba(11, 11, 16, 0.06);
+}
+
+/* Popover flotante (portal a document.body, ver WeatherHourlyPopover) --
+   a diferencia de .flyer-weather-square, NO vive dentro de .flyer-card asi
+   que necesita su propio fondo opaco (antes dependia del papel de la
+   tarjeta de atras) + sombra propia para leerse como flotando por encima
+   de cualquier cosa (la tarjeta, o otra vecina). */
+.flyer-weather-hourly {
+  background: var(--flyer-paper);
+  border: 1px solid rgba(124, 58, 237, 0.25);
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.35), 0 8px 10px -6px rgb(0 0 0 / 0.3);
+  /* Sin esto, llegar al final de esta lista (scrollea sola, ver
+     overflow-y-auto en el JSX) encadenaba el scroll hacia la grilla de
+     tarjetas de atras -- quedaba sin frenar justo en el mismo lugar donde
+     ya habia un bug de scroll (ver WeatherHourlyPopover). */
+  overscroll-behavior: contain;
+}
+
+.flyer-weather-hour-row {
+  border-top: 1px solid rgba(11, 11, 16, 0.08);
+}
+
 /* Chat -- ver ChatPanel.jsx. Mismo mundo oscuro que Navbar/FilterBar (es
    chrome, no contenido de un evento; ver The Two-Ground Exception). */
 .flyer-chat-fab {
@@ -1321,7 +1362,8 @@
 .flyer-toggle-chip:focus-visible,
 .flyer-toggle-chip-active:focus-visible,
 .flyer-field:focus-visible,
-.flyer-scroll-cue:focus-visible {
+.flyer-scroll-cue:focus-visible,
+.flyer-weather-square:focus-visible {
   outline: 2px solid var(--flyer-pink);
   outline-offset: 2px;
 }

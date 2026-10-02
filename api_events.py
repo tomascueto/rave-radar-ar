@@ -28,7 +28,7 @@ Uso:
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from geoalchemy2.shape import to_shape
 from pydantic import BaseModel
@@ -47,6 +47,7 @@ from rag.agent import run_agent
 from users.router import get_user_genre_weights, router as users_router
 
 from admin.router import router as admin_router
+from weather_utils import get_event_weather
 
 app = FastAPI(title="Rave Radar AR - API")
 
@@ -328,6 +329,73 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
             events=[],
             conversation_id=request.conversation_id or "",
         )
+    finally:
+        db.close()
+
+
+class WeatherSummary(BaseModel):
+    temp_min: float
+    temp_max: float
+    feels_min: float
+    feels_max: float
+    condition: str
+    condition_code: int
+
+
+class WeatherHour(BaseModel):
+    time: str
+    temperature: float
+    feels_like: float
+    condition: str
+    condition_code: int
+
+
+class EventWeatherResponse(BaseModel):
+    available: bool
+    reason: str | None = None
+    summary: WeatherSummary | None = None
+    hourly: list[WeatherHour] | None = None
+
+
+@app.get("/api/users/me/saved-events/{event_id}/weather", response_model=EventWeatherResponse)
+def get_saved_event_weather(event_id: str, user: User = Depends(get_current_user)):
+    """
+    Clima para UN evento guardado puntual -- se pide por separado por cada
+    tarjeta visible (ver SavedEvents.jsx), no como parte del listado
+    general, porque cada card lo necesita en un momento distinto y el
+    listado ya es pesado de por si (foto, generos, venue).
+
+    "sin_ubicacion": el venue no tiene coordenadas -- directamente no hay
+    donde pedir pronostico. "fuera_de_rango": hay coordenadas pero el
+    evento cae fuera de la ventana de 16 dias que ofrece Open-Meteo (ver
+    weather_utils.get_event_weather), o la API de clima fallo.
+    """
+    db = SessionLocal()
+    try:
+        try:
+            event_uuid = uuid.UUID(event_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="ID de evento inválido")
+
+        is_saved = db.query(UserSavedEvent).filter(
+            UserSavedEvent.user_id == user.id, UserSavedEvent.event_id == event_uuid
+        ).first()
+        if not is_saved:
+            raise HTTPException(status_code=404, detail="Evento no encontrado entre tus guardados")
+
+        event = db.query(Event).options(joinedload(Event.venue)).filter(Event.id == event_uuid).first()
+        if event is None:
+            raise HTTPException(status_code=404, detail="Evento no encontrado")
+
+        lat, lng = _extract_coords(event.venue)
+        if lat is None:
+            return EventWeatherResponse(available=False, reason="sin_ubicacion")
+
+        weather = get_event_weather(lat, lng, event.date_from, event.date_to)
+        if weather is None:
+            return EventWeatherResponse(available=False, reason="fuera_de_rango")
+
+        return EventWeatherResponse(available=True, **weather)
     finally:
         db.close()
 

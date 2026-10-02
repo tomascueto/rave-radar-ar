@@ -588,6 +588,7 @@ function App() {
           savedEvents={savedEvents}
           loading={savedEventsLoading}
           isGuest={isGuest}
+          accessToken={accessToken}
           onToggleSaved={toggleSavedEvent}
           onOpenAuth={() => {
             setShowSavedEvents(false);

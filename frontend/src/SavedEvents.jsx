@@ -13,7 +13,7 @@ import { useModalA11y } from "./useModalA11y";
 // hay sesion o no. Disponible para invitados tambien: guardar nunca pide
 // login, asi que verlos guardados tampoco.
 export default function SavedEvents({
-  genreWeights, savedEvents, loading, isGuest, onToggleSaved, onOpenAuth, onClose,
+  genreWeights, savedEvents, loading, isGuest, onToggleSaved, onOpenAuth, onClose, accessToken,
 }) {
   const { dialogRef, dialogProps, backdropProps } = useModalA11y({
     onClose,
@@ -74,6 +74,7 @@ export default function SavedEvents({
                   isSaved={true}
                   onToggleSave={() => onToggleSaved(ev.id, ev)}
                   onRemove={() => onToggleSaved(ev.id, ev)}
+                  accessToken={accessToken}
                 />
               ))}
             </div>
