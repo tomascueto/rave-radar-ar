@@ -762,7 +762,33 @@ function EventClusterLayer({
       // separarlos del todo a esta distancia, el usuario puede volver a
       // clickear el cluster ya mas cerca -- mejor eso que un acercamiento
       // extremo de una sola vez.
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+      //
+      // 16 se quedaba corto: un cluster de 4 venues a ~140m entre si (caso
+      // real: Mandarine Park/The Bow/Rio/Oasis en Punta Carrasco) queda a
+      // ~72px de separacion en pantalla a zoom 16 -- por debajo del radio
+      // de clustering (80px), asi que nunca se separaba y el cluster
+      // quedaba muerto: ni entra en el umbral de 30m (mini-carrusel) ni
+      // el zoom llega a soltarlo. 18 le da margen (a esa misma distancia,
+      // ~290px a zoom 18) sin acercar tanto como para que clusters recien
+      // arriba del umbral de 30m se vean artificialmente estirados por
+      // toda la pantalla.
+      //
+      // PERO 18 fijo tiene un bug propio: para un cluster TODAVIA mas
+      // apretado que el caso de arriba (necesita mas de zoom 18 para que
+      // sus pines superen el radio de clustering de 80px), el "click de
+      // nuevo mas cerca" que promete el comentario de arriba nunca
+      // avanza -- una vez que el mapa ya esta en zoom 18, fitBounds con el
+      // mismo maxZoom:18 de siempre vuelve a calcular ese mismo 18 (ya
+      // satisfecho), asi que no pasa nada visible y el cluster queda
+      // pegado ahi para siempre (reportado como "clickeo y no me muestra
+      // nada", resuelto solo haciendo zoom a mano). Por eso el piso es 18
+      // (mismo comportamiento de siempre en el primer click, sin
+      // regresion para el caso de Punta Carrasco) pero si el mapa YA esta
+      // en 18 o mas, el tope sube con el -- le da a cada click siguiente
+      // una "etapa" real de mas zoom en vez de repetir la misma cuenta,
+      // hasta el maximo que ofrece el TileLayer (20).
+      const maxZoom = Math.min(Math.max(18, map.getZoom() + 2), 20);
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom });
     }
   }
 
