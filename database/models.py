@@ -92,7 +92,7 @@ class Event(Base):
     city_id = Column(UUID(as_uuid=True), ForeignKey("cities.id"), nullable=True)
     currency = Column(String(10), default="ARS")
     ticket_url = Column(Text)
-    flyer_url = Column(String(500))
+    flyer_url = Column(Text)
     event_type = Column(Enum(EventTypeEnum))
     is_active = Column(Boolean, default=True)
     external_id = Column(String(200))
