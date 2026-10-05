@@ -1,13 +1,14 @@
 """
 Corre el pipeline completo de datos en un solo comando: scrapea Jodify,
-carga los eventos a Postgres, desactiva los que ya pasaron de fecha, y
-enriquece los venues con coordenadas reales extraídas de la página propia
-de cada evento.
+carga los eventos a Postgres, desactiva los que ya pasaron de fecha,
+enriquece los venues con coordenadas reales, e indexa todo en Qdrant para
+que el chat pueda encontrarlo por búsqueda semántica.
 
-No reemplaza a los cuatro scripts individuales -- los reutiliza tal cual,
+No reemplaza a los cinco scripts individuales -- los reutiliza tal cual,
 llamando a sus funciones en orden. Si en algún momento hace falta correr
-solo uno (por ejemplo, re-enriquecer venues sin volver a scrapear), los
-scripts originales se siguen usando por separado.
+solo uno (por ejemplo, re-enriquecer venues sin volver a scrapear, o
+reindexar Qdrant después de un cambio manual en Postgres), los scripts
+originales se siguen usando por separado.
 
 Sobre "0 eventos": el scraper puede devolver una lista vacía por dos
 motivos muy distintos -- genuinamente no hay eventos nuevos (raro, pero
@@ -31,6 +32,7 @@ from auth.email_utils import send_email
 from database.connection import SessionLocal
 from database.models import User
 from scraper.deactivate_past_events import deactivate_past_events
+from scraper.index_events_qdrant import index_events
 from scraper.load_jodify import load_events
 from scraper.sources.jodify import fetch_all_events, save_results
 from scraper.sources.jodify_venues import enrich_venues
@@ -66,7 +68,7 @@ def _notify_admins(subject: str, html_content: str) -> None:
 
 def main() -> None:
     try:
-        log.info("=== Paso 1/4: scrapeando Jodify ===")
+        log.info("=== Paso 1/5: scrapeando Jodify ===")
         events = fetch_all_events()
         save_results(events)
 
@@ -94,14 +96,17 @@ def main() -> None:
             )
             sys.exit(1)
 
-        log.info("=== Paso 2/4: cargando %d eventos a Postgres ===", len(events))
+        log.info("=== Paso 2/5: cargando %d eventos a Postgres ===", len(events))
         load_events(events)
 
-        log.info("=== Paso 3/4: desactivando eventos con fecha ya pasada ===")
+        log.info("=== Paso 3/5: desactivando eventos con fecha ya pasada ===")
         deactivate_past_events()
 
-        log.info("=== Paso 4/4: enriqueciendo venues con coordenadas reales ===")
+        log.info("=== Paso 4/5: enriqueciendo venues con coordenadas reales ===")
         enrich_venues()
+
+        log.info("=== Paso 5/5: indexando eventos en Qdrant ===")
+        index_events()
 
         log.info("=== Pipeline completo ===")
 

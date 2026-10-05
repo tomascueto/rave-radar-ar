@@ -1,7 +1,8 @@
+# scraper/index_events_qdrant.py
 """
 Indexa los eventos de PostgreSQL en Qdrant, generando embeddings con un
 modelo local (multilingual-e5-large, corre 100% offline tras la descarga
-inicial — sin dependencia de ninguna API externa de pago ni con límites de
+inicial -- sin dependencia de ninguna API externa de pago ni con límites de
 cuota).
 
 Diseño (búsqueda híbrida):
@@ -12,21 +13,29 @@ Diseño (búsqueda híbrida):
   - El PAYLOAD contiene metadata estructurada para filtrado exacto: venue,
     ciudad, fecha, precio, ids de DJs/géneros. Es lo que se usa cuando el
     usuario menciona algo puntual ("eventos en Crobar", "este sábado",
-    "menos de $20.000") — esto NO depende de similitud semántica, es un
+    "menos de $20.000") -- esto NO depende de similitud semántica, es un
     filtro tipo WHERE de SQL sobre el payload.
 
 Nota sobre el modelo E5: requiere prefijos especiales en el texto según la
-documentación oficial — "passage: " para los textos que se indexan (este
+documentación oficial -- "passage: " para los textos que se indexan (este
 script) y "query: " para las consultas de búsqueda (en el agente, más
 adelante). Omitir el prefijo degrada la calidad de la búsqueda.
+
+Nota sobre el id de cada punto: se usa el MISMO id que el evento ya tiene
+en Postgres (str(event.id)), no un uuid4 nuevo en cada corrida. Qdrant
+hace upsert por id -- con un id fijo, re-indexar un evento ya existente
+actualiza su punto; con un id random nuevo cada vez, cada corrida agregaba
+un duplicado del mismo evento en vez de actualizarlo.
 
 Uso:
     python -m scraper.index_events_qdrant
 """
 
 import logging
+import os
 import uuid
 
+from dotenv import load_dotenv
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, PointStruct, VectorParams
 from sentence_transformers import SentenceTransformer
@@ -42,12 +51,19 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
+load_dotenv()
+
 COLLECTION_NAME = "events"
 EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
 EMBEDDING_DIM = 1024  # confirmado empíricamente con el modelo elegido
 BATCH_SIZE = 32
+
+
+EVENT_TYPE_HINTS = {
+    "sunset": "Evento de sunset, al atardecer.",
+    "after": "After, para la madrugada.",
+    "party": "Fiesta nocturna.",
+}
 
 
 def build_embedding_text(event: Event) -> str:
@@ -55,8 +71,18 @@ def build_embedding_text(event: Event) -> str:
     Arma el texto que se convierte en vector: SOLO contenido semántico
     libre, sin datos estructurados (esos van al payload). El prefijo
     "passage: " es requerido por el modelo E5 para textos indexados.
+
+    event_type (sunset/after/party) se agrega como una frase corta --
+    sin esto, esa información vive solo en el payload (sirve para
+    filtrar) pero nunca llega al texto que se compara por significado,
+    así que una consulta tipo "algo tranquilo de tarde" no tiene forma
+    de asociarse con un evento de sunset por más que lo sea.
     """
     parts = [event.name]
+
+    tipo = event.event_type.value if hasattr(event.event_type, "value") else event.event_type
+    if tipo in EVENT_TYPE_HINTS:
+        parts.append(EVENT_TYPE_HINTS[tipo])
 
     genre_names = [eg.genre.name for eg in event.genres if eg.genre]
     if genre_names:
@@ -88,7 +114,7 @@ def build_payload(event: Event) -> dict:
         "city_id": str(event.city_id) if event.city_id else None,
         "min_price": float(event.min_price) if event.min_price else None,
         "max_price": float(event.max_price) if event.max_price else None,
-        "event_type": event.event_type.value if event.event_type else None,
+        "event_type": event.event_type.value if hasattr(event.event_type, "value") else event.event_type,
         "is_active": event.is_active,
         "genre_slugs": [eg.genre.slug for eg in event.genres if eg.genre],
         "dj_names": [ed.dj.name for ed in event.djs if ed.dj],
@@ -114,7 +140,11 @@ def index_events() -> None:
     log.info("Cargando modelo de embeddings (%s)…", EMBEDDING_MODEL)
     model = SentenceTransformer(EMBEDDING_MODEL)
 
-    client = QdrantClient(host=QDRANT_HOST, port=QDRANT_PORT)
+    client = QdrantClient(
+        url=os.getenv("QDRANT_URL"),
+        api_key=os.getenv("QDRANT_API_KEY"),
+    )
+
     ensure_collection(client)
 
     db: Session = SessionLocal()
@@ -140,7 +170,9 @@ def index_events() -> None:
 
             points = [
                 PointStruct(
-                    id=str(uuid.uuid4()),
+                    id=str(batch[j].id),  # mismo id que ya tiene en Postgres --
+                    # asi reindexar el mismo evento actualiza su punto
+                    # existente en vez de crear uno nuevo cada corrida
                     vector=embeddings[j].tolist(),
                     payload=build_payload(batch[j]),
                 )

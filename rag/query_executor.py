@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import math
 
+from dotenv import load_dotenv
 from geoalchemy2 import Geography
 from geoalchemy2.shape import to_shape
 from sqlalchemy import cast
@@ -41,8 +42,7 @@ from sentence_transformers import SentenceTransformer
 from database.models import Event, EventDJ, EventGenre, DJ, Genre, Venue
 from rag.router import RouteResult
 
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
+load_dotenv() # Esto asegura que Python lea tu archivo .env
 COLLECTION_NAME = "events"
 DEFAULT_LIMIT = 20
 
