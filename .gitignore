@@ -1,6 +1,9 @@
 # Variables de entorno — NUNCA subir al repo
 .env
 
+# Secretos / credenciales sueltas — NUNCA subir al repo
+recovery-codes-vercel.txt
+
 # Entorno virtual de Python
 venv/
 __pycache__/

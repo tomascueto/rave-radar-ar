@@ -8,7 +8,10 @@ import "leaflet/dist/leaflet.css";
 export const DEFAULT_CENTER = [-34.6037, -58.3816];
 const DEFAULT_ZOOM = 12;
 
-const API_BASE = "http://localhost:8000";
+// Se incrusta en el JS en build-time (npm run build). Para cambiarla en prod hay que
+// setear VITE_API_URL en la configuración de Vercel y volver a desplegar, no alcanza
+// con cambiar el .env local.
+const API_BASE = import.meta.env.VITE_API_URL;
 
 const CARTO_API_KEY = import.meta.env.VITE_CARTO_API_KEY;
 export const TILE_URL = `https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png?key=${CARTO_API_KEY}`;

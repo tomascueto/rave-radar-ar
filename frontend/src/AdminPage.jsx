@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useModalA11y } from "./useModalA11y";
 import AdminLocationPicker from "./AdminLocationPicker";
 
-const API_BASE = "http://localhost:8000";
+// Se incrusta en el JS en build-time (npm run build). Para cambiarla en prod hay que
+// setear VITE_API_URL en la configuración de Vercel y volver a desplegar, no alcanza
+// con cambiar el .env local.
+const API_BASE = import.meta.env.VITE_API_URL;
 const PAGE_SIZE = 20;
 
 // Wrapper fino sobre fetch para todas las llamadas a /api/admin/* --

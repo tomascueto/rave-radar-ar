@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
-const API_BASE = "http://localhost:8000";
+// Se incrusta en el JS en build-time (npm run build). Para cambiarla en prod hay que
+// setear VITE_API_URL en la configuración de Vercel y volver a desplegar, no alcanza
+// con cambiar el .env local.
+const API_BASE = import.meta.env.VITE_API_URL;
 
 // Íconos dibujados -- reemplazan los emoji (💬, 📍) que tenía esta pieza
 // desde el arranque del proyecto, mismo criterio que el resto del sistema

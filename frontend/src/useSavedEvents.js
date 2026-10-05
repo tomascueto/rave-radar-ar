@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-const API_BASE = "http://localhost:8000";
+// Se incrusta en el JS en build-time (npm run build). Para cambiarla en prod hay que
+// setear VITE_API_URL en la configuración de Vercel y volver a desplegar, no alcanza
+// con cambiar el .env local.
+const API_BASE = import.meta.env.VITE_API_URL;
 const GUEST_KEY = "rr_guest_saved_events";
 
 // El storage de invitado nunca es confiable (version vieja, editado a
