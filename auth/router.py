@@ -3,16 +3,20 @@ Endpoints del flujo de login con Google. Una vez logueado, el resto del
 sistema (incluido el chat) nunca vuelve a hablar con Google -- solo con
 los JWT propios emitidos aca.
 """
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+from dotenv import load_dotenv
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import SQLAlchemyError
+
+load_dotenv()
 
 from auth.dependencies import get_current_user
 from auth.email_utils import render_email, send_email
@@ -36,7 +40,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 # migrar a storage_uri="redis://...".
 limiter = Limiter(key_func=get_remote_address)
 
-FRONTEND_URL = "http://localhost:5173"
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 BACKEND_URL = "http://localhost:8000"
 
 STATE_COOKIE = "oauth_state"

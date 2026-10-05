@@ -37,7 +37,7 @@ from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import joinedload
 
 from auth.dependencies import get_current_user, get_current_user_optional
-from auth.router import limiter as auth_limiter, router as auth_router
+from auth.router import FRONTEND_URL, limiter as auth_limiter, router as auth_router
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -59,7 +59,10 @@ app.add_middleware(SlowAPIMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    # localhost:5173 siempre permitido para que el dev local no dependa de
+    # setear FRONTEND_URL -- FRONTEND_URL se suma aparte (y se deduplica solo
+    # si coinciden) para cubrir el dominio real de Vercel en produccion.
+    allow_origins=list({"http://localhost:5173", FRONTEND_URL}),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
