@@ -71,6 +71,8 @@ CITIES_IDS: list[str] = [
     "1d1b66da-b3dd-498e-bd78-7cf51c140d2e",
     "6e5df917-6128-4c4e-a20e-90c81c15d075",
     "4a0a685b-2343-4d82-a4d3-efc5b0220b8e",
+    "cfd3c5e7-20b1-483e-8d2a-2da12b81a1b9",
+    "67e55044-10b1-426f-9247-bb680e5fe0c8",
 ]
 
 CITIES_PARAM = ",".join(CITIES_IDS)
@@ -79,7 +81,7 @@ CITIES_ENCODED = CITIES_PARAM.replace(",", "%2C")
 # Token del Server Action de Next.js — puede cambiar si Jodify redeploya.
 # Si el scraper deja de funcionar, revisar este valor en las DevTools del browser.
 # Actualizado: 30/09/2026
-NEXT_ACTION_TOKEN = "7f57896200b65be3de19e3e629922232b49683e62a"
+NEXT_ACTION_TOKEN = "7f9a93e2cbdcf945171675e7a4f30b081d6c5a88d8"
 
 REQUEST_HEADERS: dict[str, str] = {
     "accept": "text/x-component",
