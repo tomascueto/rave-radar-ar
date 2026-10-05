@@ -69,6 +69,25 @@
   background: var(--flyer-ink);
 }
 
+/* Reemplaza a Tailwind h-screen (100vh) en las pantallas de "una sola
+   pantalla, sin scroll real" (shell principal de la app, hero de
+   LandingPage, ResetPasswordPage) -- 100vh en mobile se mide con la barra
+   de direcciones COLAPSADA (el viewport mas grande posible), asi que si
+   en el momento de cargar la barra esta expandida, el documento queda
+   genuinamente mas alto que lo visible, por ese delta exacto. Eso dejaba
+   a la app entera scrolleable por ese margen -- y como nada reseteaba el
+   scroll, alcanzaba un solo tap (clickear un evento, tipicamente lo que
+   colapsa la barra) para correr el Navbar para arriba y que no volviera
+   nunca (ver bug reportado, Map.jsx/EventDetailOverlay). Dos declaraciones
+   en la MISMA regla, no dos clases Tailwind separadas -- asi el fallback
+   no depende del orden en que Tailwind emita sus utilities: un navegador
+   sin soporte de dvh simplemente ignora la segunda linea (invalida) y se
+   queda con el 100vh de la primera. */
+.flyer-app-shell {
+  height: 100vh;
+  height: 100dvh;
+}
+
 /* Resplandor diagonal compartido por el hero Y por LandingMore (debajo)
    -- antes LandingMore tenia su propio glow radial centrado, que no
    tenia nada que ver con la diagonal violeta-a-negro del hero

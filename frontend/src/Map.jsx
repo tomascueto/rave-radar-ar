@@ -246,13 +246,31 @@ function SearchIcon({ className }) {
 // no como un rectángulo del input recortado por el border-radius del
 // padre.
 function MapSearchBar({ value, onChange }) {
+  const inputRef = useRef(null);
+
   return (
-    <div className="flyer-search-pill trial-pill absolute top-16 left-1/2 -translate-x-1/2 z-[1000] rounded-full flex items-center gap-2 px-3.5 py-2 w-[min(320px,calc(100vw-32px))]">
+    <div
+      className="flyer-search-pill trial-pill absolute top-16 left-1/2 -translate-x-1/2 z-[1000] rounded-full flex items-center gap-2 px-3.5 py-3 w-[min(320px,calc(100vw-32px))]"
+      // El <input> en si mide poco de alto (su linea de texto-xs, ~16px) --
+      // el resto del alto de la pildora es padding del CONTENEDOR, que un
+      // <div> no reenvia a un hijo con un click. Sin esto, tapear arriba o
+      // abajo del texto (la mayor parte del area que VISUALMENTE parece
+      // tocable) no enfocaba el input -- recien probado en mobile por
+      // primera vez. onMouseDown, no onClick: enfoca ANTES de que el click
+      // del propio <input> (si el tap cayo justo encima) le saque el foco
+      // que el navegador ya le habria dado solo.
+      onMouseDown={(e) => {
+        if (e.target === inputRef.current) return;
+        e.preventDefault();
+        inputRef.current?.focus();
+      }}
+    >
       <SearchIcon className="w-4 h-4 flyer-text-muted flex-shrink-0" />
       <label htmlFor="flyer-map-search" className="sr-only">
         Buscar eventos por nombre, lugar o género
       </label>
       <input
+        ref={inputRef}
         id="flyer-map-search"
         name="map-search"
         type="search"
@@ -447,8 +465,15 @@ function GenreFilterMenu({ genres, selected, onToggle, onClear }) {
               directo de fijar (max-h calibrado al alto real de una fila +
               gap). Un flex-wrap no permite ese control: cuantos entran por
               fila depende del largo de cada nombre, asi que "6-7 visibles"
-              nunca seria consistente. */}
-          <div className="flex flex-col gap-1 max-h-64 overflow-y-auto flyer-scroll-hidden pr-0.5">
+              nunca seria consistente.
+              py-3.5 (no py-2, como antes) -- cada fila mide entonces 44px
+              de alto (14px padding + 16px de linea de texto-xs + 14px),
+              el minimo recomendado de toque en mobile; con py-2 median
+              32px, probado recien en mobile por primera vez y quedaban
+              chicas para el dedo. max-h-72 (288px) en vez de max-h-64 para
+              mantener "6-7 visibles" con filas mas altas (288/48 = 6
+              filas completas, contando el gap-1 entre ellas). */}
+          <div className="flex flex-col gap-1 max-h-72 overflow-y-auto flyer-scroll-hidden pr-0.5">
             {genres.map((g) => {
               const isSelected = selected.has(g.id);
               return (
@@ -457,7 +482,7 @@ function GenreFilterMenu({ genres, selected, onToggle, onClear }) {
                   onClick={() => onToggle(g.id)}
                   aria-pressed={isSelected}
                   title={g.name}
-                  className={`flyer-sans flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                  className={`flyer-sans flex items-center justify-between gap-2 px-3 py-3.5 rounded-lg text-xs font-semibold transition-colors ${
                     isSelected ? "flyer-toggle-chip-active" : "flyer-toggle-chip"
                   }`}
                 >
@@ -486,7 +511,10 @@ function AffinitySwitch({ checked, onChange }) {
       role="switch"
       aria-checked={checked}
       onClick={onChange}
-      className="trial-pill flyer-pill-text flex items-center gap-2 rounded-full pl-3 pr-1.5 py-1.5 transition-colors"
+      // py-3, no py-1.5 -- media ~32px de alto, por debajo del minimo de
+      // toque recomendado en mobile (44px); igual que el panel de generos,
+      // nunca se habia probado en una pantalla chica.
+      className="trial-pill flyer-pill-text flex items-center gap-2 rounded-full pl-3 pr-1.5 py-3 transition-colors"
     >
       <span className="flyer-sans text-xs font-medium">Solo alta afinidad</span>
       <span

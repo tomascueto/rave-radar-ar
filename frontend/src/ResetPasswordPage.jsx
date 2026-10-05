@@ -50,7 +50,7 @@ export default function ResetPasswordPage() {
 
   if (!token) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+      <div className="flyer-app-shell w-screen flex items-center justify-center bg-slate-50">
         <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
           <p className="text-sm text-red-600">
             Este link no es válido. Pedí uno nuevo desde "¿Olvidaste tu contraseña?".
@@ -62,7 +62,7 @@ export default function ResetPasswordPage() {
 
   if (done) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+      <div className="flyer-app-shell w-screen flex items-center justify-center bg-slate-50">
         <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
           <p className="text-sm text-green-700 mb-4">
             Contraseña actualizada. Ya podés iniciar sesión.
@@ -79,7 +79,7 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
+    <div className="flyer-app-shell w-screen flex items-center justify-center bg-slate-50">
       <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
         <h2 className="font-semibold text-lg text-slate-800 mb-4">Elegí una nueva contraseña</h2>
 

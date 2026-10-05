@@ -72,7 +72,7 @@ function LandingPin() {
 function LandingPage({ onEnter }) {
   return (
     <div className="flyer-landing">
-      <div className="relative h-screen overflow-hidden flex items-center justify-center">
+      <div className="relative flyer-app-shell overflow-hidden flex items-center justify-center">
         <div className="absolute inset-0 flyer-map pointer-events-none">
           <MapContainer
             center={LANDING_MAP_CENTER}
@@ -274,6 +274,25 @@ function App() {
       window.removeEventListener("click", onActivity);
       window.removeEventListener("keydown", onActivity);
       window.removeEventListener("touchstart", onActivity);
+    };
+  }, [hasEntered]);
+
+  // Red de seguridad incondicional contra el scroll de pagina real mientras
+  // se ve la app (no la landing, que SI scrollea normalmente mas abajo del
+  // hero -- ver LandingMore). .flyer-app-shell (100dvh con fallback a
+  // 100vh) ataca la causa de raiz, pero esto asegura que aunque algo
+  // puntual la vuelva a desbordar (un navegador raro, un caso que no
+  // contemplamos), el documento fisicamente no pueda scrollear -- nunca
+  // mas un click corriendo el Navbar para arriba sin que nada lo revierta.
+  useEffect(() => {
+    if (!hasEntered) return;
+    const { style } = document.documentElement;
+    const previousOverflow = style.overflow;
+    style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+    return () => {
+      style.overflow = previousOverflow;
+      document.body.style.overflow = "";
     };
   }, [hasEntered]);
 
@@ -510,7 +529,7 @@ function App() {
 
   return (
     <>
-    <div className="flex flex-col h-screen w-screen" inert={!!authTransition}>
+    <div className="flex flex-col flyer-app-shell w-screen" inert={!!authTransition}>
       <Navbar
         currentUser={currentUser}
         savedCount={savedIds.size}
