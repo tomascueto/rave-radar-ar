@@ -30,6 +30,7 @@ import math
 from dotenv import load_dotenv
 from geoalchemy2 import Geography
 from geoalchemy2.shape import to_shape
+from google import genai
 from sqlalchemy import cast
 from sqlalchemy.sql import func
 from sqlalchemy.orm import Session, joinedload
@@ -37,13 +38,17 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Filter, FieldCondition, MatchValue, MatchAny, Range, DatetimeRange,
 )
-from sentence_transformers import SentenceTransformer
 
 from database.models import Event, EventDJ, EventGenre, DJ, Genre, Venue
+from rag.retry_helper import call_with_retry
 from rag.router import RouteResult
 
 load_dotenv() # Esto asegura que Python lea tu archivo .env
 COLLECTION_NAME = "events"
+# Mismo modelo/dimension que scraper/index_events_qdrant.py -- tienen que
+# coincidir exactamente, son dos mitades del mismo espacio vectorial.
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIM = 768
 DEFAULT_LIMIT = 20
 
 
@@ -156,13 +161,21 @@ def _build_qdrant_filter(filters: dict) -> Filter:
 
 def execute_qdrant(
     db: Session,
-    model: SentenceTransformer,
+    model: genai.Client,
     client: QdrantClient,
     filters: dict,
     semantic_text: str,
     limit: int = DEFAULT_LIMIT,
 ) -> list[Event]:
-    query_vector = model.encode(f"query: {semantic_text}").tolist()
+    # RETRIEVAL_QUERY, no RETRIEVAL_DOCUMENT -- es el texto que se busca, no
+    # el que se indexa (ver nota en scraper/index_events_qdrant.py).
+    embed_response = call_with_retry(
+        model.models.embed_content,
+        model=EMBEDDING_MODEL,
+        contents=[semantic_text],
+        config={"task_type": "RETRIEVAL_QUERY", "output_dimensionality": EMBEDDING_DIM},
+    )
+    query_vector = embed_response.embeddings[0].values
     qdrant_filter = _build_qdrant_filter(filters)
 
     response = client.query_points(
@@ -214,7 +227,7 @@ def execute_qdrant(
 def execute(
     db: Session,
     route_result: RouteResult,
-    model: SentenceTransformer | None = None,
+    model: genai.Client | None = None,
     client: QdrantClient | None = None,
     limit: int = DEFAULT_LIMIT,
 ) -> list[Event]:

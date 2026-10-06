@@ -31,9 +31,9 @@ from datetime import datetime, timezone
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from geoalchemy2.shape import to_shape
+from google import genai
 from pydantic import BaseModel
 from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import joinedload
 
 from auth.dependencies import get_current_user, get_current_user_optional
@@ -71,13 +71,12 @@ app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(admin_router)
 
-# Se cargan UNA sola vez al arrancar el servidor, no en cada request del
-# chat -- cargar el modelo de embeddings por consulta agregaria varios
-# segundos a cada mensaje.
-print("Cargando modelo de embeddings (puede tardar unos segundos)...")
-_embedding_model = SentenceTransformer("intfloat/multilingual-e5-large")
+# El cliente de Qdrant se crea UNA sola vez al arrancar el servidor, no en
+# cada request del chat. _embedding_model ya no carga nada pesado en
+# memoria -- es un cliente liviano de la API de Gemini (embeddings), no un
+# modelo local.
+_embedding_model = genai.Client()
 _qdrant_client = QdrantClient(host="localhost", port=6333)
-print("Modelo cargado. Servidor listo.")
 
 
 class MapEvent(BaseModel):

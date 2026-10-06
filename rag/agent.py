@@ -28,9 +28,9 @@ from __future__ import annotations
 import time
 from typing import TypedDict, Literal
 
+from google import genai
 from langgraph.graph import StateGraph, END
 from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 from sqlalchemy.orm import Session
 
 from database.models import Event
@@ -55,7 +55,7 @@ class AgentState(TypedDict):
     user_lng: float | None
 
 
-def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
+def build_agent(db: Session, model: genai.Client, client: QdrantClient):
     """
     Construye y compila el grafo. Recibe la sesión de base de datos y las
     dependencias de búsqueda semántica como closures, siguiendo el mismo
@@ -223,7 +223,7 @@ def build_agent(db: Session, model: SentenceTransformer, client: QdrantClient):
 
 def run_agent(
     db: Session,
-    model: SentenceTransformer,
+    model: genai.Client,
     client: QdrantClient,
     query: str,
     history: list[dict] | None = None,

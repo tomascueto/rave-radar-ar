@@ -13,13 +13,16 @@ import os
 import sys
 
 from dotenv import load_dotenv
+from google import genai
 from qdrant_client import QdrantClient
-from sentence_transformers import SentenceTransformer
 
 load_dotenv()
 
 COLLECTION_NAME = "events"
-EMBEDDING_MODEL = "intfloat/multilingual-e5-large"
+# Mismo modelo/dimension que scraper/index_events_qdrant.py y
+# rag/query_executor.py -- tienen que coincidir exactamente.
+EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_DIM = 768
 
 
 def main() -> None:
@@ -41,13 +44,16 @@ def main() -> None:
         print("La colección está vacía -- no hay nada que buscar todavía. Corré la indexación primero.")
         sys.exit(1)
 
-    print(f"\nCargando el modelo de embeddings ({EMBEDDING_MODEL})… puede tardar unos segundos.")
-    model = SentenceTransformer(EMBEDDING_MODEL)
+    genai_client = genai.Client()
 
-    # Prefijo "query: " -- el mismo modelo E5 usa un prefijo distinto para
-    # texto que se busca que para texto que se indexa ("passage: "). Mezclar
-    # los dos prefijos, o no usar ninguno, degrada la calidad del resultado.
-    query_vector = model.encode(f"query: {query_text}").tolist()
+    # task_type="RETRIEVAL_QUERY", no RETRIEVAL_DOCUMENT -- es el texto que
+    # se busca, no el que se indexa (ver rag/query_executor.py).
+    response = genai_client.models.embed_content(
+        model=EMBEDDING_MODEL,
+        contents=[query_text],
+        config={"task_type": "RETRIEVAL_QUERY", "output_dimensionality": EMBEDDING_DIM},
+    )
+    query_vector = response.embeddings[0].values
 
     results = client.query_points(
         collection_name=COLLECTION_NAME,
