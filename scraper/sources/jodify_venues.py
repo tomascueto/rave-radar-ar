@@ -64,10 +64,23 @@ def _build_session() -> requests.Session:
 
 
 def extract_venue_from_html(html: str) -> dict | None:
+    # Bug real (no el que decia el comentario anterior -- el nivel de
+    # escaping SI es consistente, un solo backslash en todos los campos,
+    # verificado contra paginas reales caracter por caracter): el valor de
+    # latitude/longitude viene SIN comillas (es un numero JSON, no un
+    # string), pero `\\"?` solo hace opcional la COMILLA, no el backslash
+    # que la precede en el patron -- asi que exigia un backslash que en el
+    # caso sin comillas no existe, y el regex nunca matcheaba. `(?:\\")?`
+    # agrupa backslash+comilla como una unidad opcional, cubriendo los dos
+    # formatos (con y sin comillas) de verdad. Esto explica por que tantos
+    # venues terminaban en precision='city'/'unknown' via Nominatim en vez
+    # de 'exact' via Jodify -- Jodify SI tenia la coordenada, el regex
+    # simplemente nunca la encontraba.
+    #
     # Coordenadas con comillas: \"latitude\":\"valor\"
     # Coordenadas sin comillas: \"latitude\":valor
-    lat = re.search(r'\\"latitude\\":\\"?([-\d.]+)\\"?', html)
-    lng = re.search(r'\\"longitude\\":\\"?([-\d.]+)\\"?', html)
+    lat = re.search(r'\\"latitude\\":(?:\\")?([-\d.]+)(?:\\")?', html)
+    lng = re.search(r'\\"longitude\\":(?:\\")?([-\d.]+)(?:\\")?', html)
     name = re.search(r'\\"venues\\":\{\\"id\\":\\"[^"]+\\",\\"name\\":\\"([^"\\]+)\\"', html)
     neighborhood = re.search(r'\\"neighborhood\\":\\"([^"\\]+)\\"', html)
     address = re.search(r'\\"address\\":\\"([^"\\]+)\\"', html)

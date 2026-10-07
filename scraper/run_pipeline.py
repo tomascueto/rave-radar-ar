@@ -1,14 +1,25 @@
 """
 Corre el pipeline completo de datos en un solo comando: scrapea Jodify,
 carga los eventos a Postgres, desactiva los que ya pasaron de fecha,
-enriquece los venues con coordenadas reales, e indexa todo en Qdrant para
-que el chat pueda encontrarlo por búsqueda semántica.
+enriquece los venues con coordenadas reales (Jodify -> Nominatim -> Gemini
++ búsqueda como último recurso), e indexa todo en Qdrant para que el chat
+pueda encontrarlo por búsqueda semántica.
 
-No reemplaza a los cinco scripts individuales -- los reutiliza tal cual,
+No reemplaza a los siete scripts individuales -- los reutiliza tal cual,
 llamando a sus funciones en orden. Si en algún momento hace falta correr
 solo uno (por ejemplo, re-enriquecer venues sin volver a scrapear, o
 reindexar Qdrant después de un cambio manual en Postgres), los scripts
 originales se siguen usando por separado.
+
+Sobre geocode_venues() y geocode_llm_second_pass.run(): un evento sin
+coordenadas de venue nunca aparece en el mapa (ver api_events.py,
+_event_to_map_event) -- enrich_venues() por sí solo no alcanza, porque
+Jodify no siempre tiene coordenadas en la página del evento. Estos dos
+pasos rellenan lo que falta: Nominatim primero (gratis, sin límite diario
+real), Gemini+búsqueda después solo para lo que Nominatim no resolvió.
+Ambos son resilientes a fallas parciales por diseño (una consulta que
+falla, o la cuota diaria de Gemini agotada a mitad de lote, no aborta el
+paso ni el pipeline -- ese venue queda para la próxima corrida).
 
 Sobre "0 eventos": el scraper puede devolver una lista vacía por dos
 motivos muy distintos -- genuinamente no hay eventos nuevos (raro, pero
@@ -32,6 +43,8 @@ from auth.email_utils import send_email
 from database.connection import SessionLocal
 from database.models import User
 from scraper.deactivate_past_events import deactivate_past_events
+from scraper.geocode_llm_second_pass import run as geocode_venues_llm
+from scraper.geocode_venues import geocode_venues
 from scraper.index_events_qdrant import index_events
 from scraper.load_jodify import load_events
 from scraper.sources.jodify import fetch_all_events, save_results
@@ -68,7 +81,7 @@ def _notify_admins(subject: str, html_content: str) -> None:
 
 def main() -> None:
     try:
-        log.info("=== Paso 1/5: scrapeando Jodify ===")
+        log.info("=== Paso 1/7: scrapeando Jodify ===")
         events = fetch_all_events()
         save_results(events)
 
@@ -96,16 +109,22 @@ def main() -> None:
             )
             sys.exit(1)
 
-        log.info("=== Paso 2/5: cargando %d eventos a Postgres ===", len(events))
+        log.info("=== Paso 2/7: cargando %d eventos a Postgres ===", len(events))
         load_events(events)
 
-        log.info("=== Paso 3/5: desactivando eventos con fecha ya pasada ===")
+        log.info("=== Paso 3/7: desactivando eventos con fecha ya pasada ===")
         deactivate_past_events()
 
-        log.info("=== Paso 4/5: enriqueciendo venues con coordenadas reales ===")
+        log.info("=== Paso 4/7: enriqueciendo venues con coordenadas de Jodify ===")
         enrich_venues()
 
-        log.info("=== Paso 5/5: indexando eventos en Qdrant ===")
+        log.info("=== Paso 5/7: geocodificando venues restantes (Nominatim) ===")
+        geocode_venues()
+
+        log.info("=== Paso 6/7: segunda pasada de geocoding (Gemini + búsqueda) ===")
+        geocode_venues_llm()
+
+        log.info("=== Paso 7/7: indexando eventos en Qdrant ===")
         index_events()
 
         log.info("=== Pipeline completo ===")
