@@ -15,24 +15,70 @@ from sqlalchemy.orm import Session
 
 # (nombre_tabla, columna_id, columna_nombre, tipo_resultado, funcion_de_similitud)
 #
-# "word_similarity" en vez de "similarity" para genres: similarity() compara
-# las dos cadenas ENTERAS, asi que un candidato corto (ej. "progre") contra
-# un nombre largo (ej. "Progressive House") da un score bajo aunque el
-# candidato sea, en los hechos, un acierto -- el nombre largo "diluye" el
-# puntaje. word_similarity() en cambio busca el mejor sub-fragmento del
-# nombre largo que se parezca al candidato, que es exactamente el caso de
-# una jerga/abreviatura de genero (progre, tribal, minimal). Verificado
-# contra Postgres real: no cambia ningun resultado de dj/venue/city en un
-# conjunto de prueba representativo, y resuelve "progre" -> "Progressive
-# House" (antes quedaba sin resolver: 0.316 contra el umbral de 0.4).
+# "word_similarity" en vez de "similarity" para genres y djs: similarity()
+# compara las dos cadenas ENTERAS, asi que un candidato corto (ej. "progre",
+# "Bibi") contra un nombre largo (ej. "Progressive House", "Michael Bibi")
+# da un score bajo aunque el candidato sea, en los hechos, un acierto -- el
+# nombre largo "diluye" el puntaje. word_similarity() en cambio busca el
+# mejor sub-fragmento del nombre largo que se parezca al candidato, que es
+# exactamente el caso de una jerga/abreviatura de genero (progre, tribal,
+# minimal) o un apodo/nombre parcial de DJ. Verificado contra Postgres
+# real: resuelve "progre" -> "Progressive House" (antes 0.316 contra el
+# umbral de 0.4) y "Bibi" -> "Michael Bibi" (antes 0.385, por debajo del
+# umbral por un margen minimo -- la consulta caia al fallback semantico de
+# Qdrant en vez de filtrar por el DJ exacto, y Qdrant solo no alcanzaba
+# para encontrar sus eventos).  Venues y cities quedan con similarity() por
+# ahora -- ahi un candidato corto corre mas riesgo de ser una palabra
+# generica (ej. "Club", "Bar") que matchee por sustring contra muchos
+# nombres sin relacion real entre si.
 CANDIDATE_TABLES = [
-    ("djs", "id", "name", "dj", "similarity"),
+    ("djs", "id", "name", "dj", "word_similarity"),
     ("venues", "id", "name", "venue", "similarity"),
     ("genres", "id", "name", "genre", "word_similarity"),
     ("cities", "id", "name", "city", "similarity"),
 ]
 
 MIN_SCORE = 0.4  # por debajo de esto, no se considera un match confiable
+
+# Candidatos que no tienen NINGUNA señal util, ni como entidad ni como
+# texto libre para Qdrant -- se descartan del todo. "Argentina" es el
+# unico caso hoy: toda la base de datos es de Argentina, asi que el pais
+# nunca discrimina resultados en ningun lado. Ademas, con word_similarity
+# matchea falsos positivos contra nombres de DJs que comparten el sufijo
+# "-entina" (caso real: "Valentina Spirito", score 0.5 -- con la
+# similarity() vieja daba 0.217, por eso nunca se habia notado).
+IGNORED_CANDIDATES = {"argentina"}
+
+# Candidatos que NUNCA deberian intentar resolverse como entidad exacta
+# (DJ/venue/genero/ciudad) pese a que el segmenter a veces los extrae como
+# si fueran nombres propios -- son palabras genericas de "tipo de evento"
+# u "onda/estilo", no nombres. Verificado empiricamente contra la base
+# real (no es hipotetico, cada uno matcheaba de verdad por encima del
+# umbral de confianza de 0.4):
+#   "fiesta"  -> DJ "Festa Bros" (0.44)
+#   "evento"  -> DJ "Departamento" (0.43), venue "Magic Eventos" (0.40)
+#   "joda"    -> DJs "Jorge Savoretti" / "John Cosani" / "Inda Jani" (0.40)
+#   "rave"    -> DJ "Gaston Ramirez" (0.40), genero "New Wave" (0.40)
+#   "show"    -> DJs "Shai T" / "SHDW" / "Kayla Shams" (0.40)
+#   "noche"   -> DJ "Trasnoche Paraiso" (0.67 -- alto, no un caso limite)
+#   "musica"  -> DJ "Panda Music" (0.71 -- alto)
+#   "under"   -> DJ real "Underworld" (0.83) -- "under" es jerga comun
+#                para "underground", pero por mala suerte coincide con un
+#                DJ que existe de verdad; sin esto, "lo mas under" filtra
+#                por ESE DJ puntual en vez de buscar semanticamente
+#   "finde"   -> DJ "Finally Alone" (0.5) -- ademas interfiere con
+#                date_range_hint="weekend" si el segmenter lo duplica aca
+#
+# A diferencia de IGNORED_CANDIDATES, estas palabras SI aportan señal real
+# para la busqueda semantica (Qdrant) -- "under"/"rave"/"noche" describen
+# onda/estilo genuinamente. Por eso no se descartan del todo: solo se
+# saltea la resolucion de entidad, pero igual caen en "unresolved" y
+# terminan en semantic_text como texto libre.
+SKIP_ENTITY_MATCH = {
+    "fiesta", "evento", "eventos", "joda", "rave", "show",
+    "noche", "musica", "música", "electronica", "electrónica",
+    "under", "finde",
+}
 
 
 @dataclass
@@ -127,6 +173,12 @@ def resolve_candidates(db: Session, candidates: list[str], min_score: float = MI
     resolved = []
     unresolved = []
     for c in candidates:
+        normalized = c.strip().lower()
+        if normalized in IGNORED_CANDIDATES:
+            continue
+        if normalized in SKIP_ENTITY_MATCH:
+            unresolved.append(c)
+            continue
         matches = resolve_candidate(db, c, min_score=min_score)
         if matches:
             resolved.extend(matches)

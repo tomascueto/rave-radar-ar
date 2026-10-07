@@ -1,4 +1,5 @@
 import os
+from typing import Literal
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from google import genai
@@ -10,8 +11,32 @@ load_dotenv()
 client = genai.Client()
 
 class QuerySegments(BaseModel):
-    entity_candidates: list[str] = Field(description="Nombres propios (DJs, venues, géneros, ciudades) mencionados tal cual aparecen.")
+    entity_candidates: list[str] = Field(
+        description=(
+            "Nombres propios (DJs, venues, géneros, ciudades) mencionados tal cual aparecen. "
+            "NO incluyas acá palabras genéricas que describen el tipo de evento o una onda/estilo "
+            "en vez de nombrar algo puntual -- 'fiesta', 'evento', 'show', 'joda', 'rave', "
+            "'noche', 'under', 'groovy', 'música' NO son nombres propios aunque el usuario los "
+            "use como si lo fueran; esas van en free_text. Ejemplo: en 'una joda under de techno' "
+            "el único candidato es 'techno' -- 'joda' y 'under' son free_text."
+        )
+    )
     date_expr: str | None = Field(description="Expresión de fecha si la hay, o null.")
+    date_range_hint: Literal["weekend", "month", "weeks", "year"] | None = Field(
+        default=None,
+        description=(
+            "Si date_expr es un RANGO relativo amplio (no una fecha puntual), clasificalo acá -- "
+            "cubrí cualquier forma de decirlo en español rioplatense, no busques una palabra "
+            "literal en particular, entendé la intención:\n"
+            "  'weekend': este finde, el que viene, sábado y domingo, fin de semana\n"
+            "  'month': este mes, lo que queda del mes\n"
+            "  'weeks': las próximas semanas, en 2-3 semanas\n"
+            "  'year': este año, lo que resta del año, durante 2026/2027, antes de que termine el año\n"
+            "Si date_expr es una fecha puntual (ej: 'el 15 de octubre', 'mañana', 'el viernes que "
+            "viene') o no hay expresión de fecha, dejá esto en null -- esas se interpretan aparte, "
+            "por código, nunca calculando la fecha vos."
+        ),
+    )
     price_expr: str | None = Field(description="Expresión de precio tal cual aparece en el texto. null si no menciona precio, O si dice explícitamente que no le importa (ej: 'cualquier precio', 'no importa cuánto', 'sin límite de presupuesto', 'lo que sea') — en esos casos no hay ninguna restricción real que interpretar, es lo mismo que no haber mencionado precio en absoluto.")
     wants_cheap: bool = Field(
         description="true si el usuario busca algo económico de CUALQUIER forma que lo exprese (barato, sin gastar de más, algo módico). false si no menciona eso o si da un número explícito."
