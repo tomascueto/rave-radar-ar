@@ -41,7 +41,7 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 limiter = Limiter(key_func=get_remote_address)
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
-BACKEND_URL = "http://localhost:8000"
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # En local (http, mismo origen o localhost<->localhost) lax/False es lo
 # correcto y no cambia nada por default. En produccion, si el frontend y
