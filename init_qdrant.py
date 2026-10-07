@@ -4,15 +4,17 @@ el .env. Pensado para correrse una sola vez contra una instancia nueva,
 pero es seguro correrlo de nuevo: si la colección ya existe, no la toca
 y no falla.
 
-Tamaño del vector: 1024 -- la dimensión de salida de multilingual-e5-large,
-el modelo de embeddings que ya usa el chat (RAG). Si en algún momento se
-cambia de modelo, este número tiene que cambiar junto con GENERATION_MODEL
-en response_generator.py -- no son independientes.
+Tamaño del vector: 768 -- output_dimensionality pedido explícitamente al
+generar embeddings con gemini-embedding-001 (ver EMBEDDING_MODEL/
+EMBEDDING_DIM en scraper/index_events_qdrant.py y rag/query_executor.py,
+que tienen que coincidir exactamente con este número). El default del
+modelo es 3072; achicarlo a 768 es deliberado para mantener el vector
+manejable en Qdrant.
 
-Distancia: coseno -- es la métrica con la que está entrenada y validada
-toda la familia E5 (lo dice la propia tarjeta del modelo en HuggingFace);
-usar otra métrica (euclidiana, producto punto) daría resultados de
-similitud sin sentido, aunque el código "funcione" sin error.
+Distancia: coseno -- es la métrica recomendada para gemini-embedding-001
+(lo dice la propia documentación del modelo); usar otra métrica
+(euclidiana, producto punto) daría resultados de similitud sin sentido,
+aunque el código "funcione" sin error.
 
 Uso:
     python init_qdrant.py
@@ -34,7 +36,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 COLLECTION_NAME = "events"
-VECTOR_SIZE = 1024  # multilingual-e5-large
+VECTOR_SIZE = 768  # gemini-embedding-001 con output_dimensionality=768
 
 
 def init_collection() -> None:
