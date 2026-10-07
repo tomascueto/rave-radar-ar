@@ -43,6 +43,15 @@ limiter = Limiter(key_func=get_remote_address)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 BACKEND_URL = "http://localhost:8000"
 
+# En local (http, mismo origen o localhost<->localhost) lax/False es lo
+# correcto y no cambia nada por default. En produccion, si el frontend y
+# el backend quedan en dominios distintos (ej. Vercel + Render), hace
+# falta samesite="none" + secure=True para que el navegador mande la
+# cookie en absoluto -- "none" sin secure es invalido y el navegador la
+# descarta. Se leen UNA sola vez aca, no en cada endpoint.
+COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "lax")
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "false").strip().lower() == "true"
+
 STATE_COOKIE = "oauth_state"
 REFRESH_COOKIE = "refresh_token"
 LINK_USER_COOKIE = "link_user_id"
@@ -61,7 +70,7 @@ def google_login(link: bool = False, refresh_token: str | None = Cookie(default=
     # contra CSRF en el flujo de OAuth).
     response.set_cookie(
         STATE_COOKIE, state,
-        httponly=True, samesite="lax", secure=False, max_age=600,
+        httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE, max_age=600,
     )
 
     if link:
@@ -92,7 +101,7 @@ def google_login(link: bool = False, refresh_token: str | None = Cookie(default=
 
             response.set_cookie(
                 LINK_USER_COOKIE, str(record.user_id),
-                httponly=True, samesite="lax", secure=False, max_age=600,
+                httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE, max_age=600,
             )
         finally:
             db.close()
@@ -109,8 +118,8 @@ def _link_error_redirect(message: str) -> RedirectResponse:
     mostrar prolijamente. El flujo de login normal (sin link_user_id) no
     se toca: sigue devolviendo la excepcion cruda de siempre."""
     redirect = RedirectResponse(f"{FRONTEND_URL}/?google_link_error={quote(message)}")
-    redirect.delete_cookie(STATE_COOKIE)
-    redirect.delete_cookie(LINK_USER_COOKIE)
+    redirect.delete_cookie(STATE_COOKIE, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
+    redirect.delete_cookie(LINK_USER_COOKIE, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
     return redirect
 
 
@@ -235,11 +244,11 @@ def google_callback(
         # que _link_error_redirect para el caso de error.
         callback_url += "&google_linked=true"
     redirect = RedirectResponse(callback_url)
-    redirect.delete_cookie(STATE_COOKIE)
-    redirect.delete_cookie(LINK_USER_COOKIE)
+    redirect.delete_cookie(STATE_COOKIE, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
+    redirect.delete_cookie(LINK_USER_COOKIE, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
     redirect.set_cookie(
         REFRESH_COOKIE, raw_refresh,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE,
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
     return redirect
@@ -281,7 +290,7 @@ def logout(refresh_token: str | None = Cookie(default=None)):
             db.close()
 
     response = Response(status_code=204)
-    response.delete_cookie(REFRESH_COOKIE)
+    response.delete_cookie(REFRESH_COOKIE, httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE)
     return response
 
 
@@ -426,7 +435,7 @@ def verify_email(token: str):
     redirect = RedirectResponse(f"{FRONTEND_URL}/?access_token={access_token}")
     redirect.set_cookie(
         REFRESH_COOKIE, raw_refresh,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE,
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
     return redirect
@@ -484,7 +493,7 @@ def login(request: Request, body: LoginIn):
     response = JSONResponse({"access_token": access_token})
     response.set_cookie(
         REFRESH_COOKIE, raw_refresh,
-        httponly=True, samesite="lax", secure=False,
+        httponly=True, samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE,
         max_age=REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
     return response
