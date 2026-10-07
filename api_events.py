@@ -25,6 +25,7 @@ Uso:
     -> http://localhost:8000/api/chat (POST, body: {"query": "..."})
 """
 
+import os
 import uuid
 from datetime import datetime, timezone
 
@@ -76,7 +77,7 @@ app.include_router(admin_router)
 # memoria -- es un cliente liviano de la API de Gemini (embeddings), no un
 # modelo local.
 _embedding_model = genai.Client()
-_qdrant_client = QdrantClient(host="localhost", port=6333)
+_qdrant_client = QdrantClient(url=os.getenv("QDRANT_URL"), api_key=os.getenv("QDRANT_API_KEY"))
 
 
 class MapEvent(BaseModel):
