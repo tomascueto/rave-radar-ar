@@ -1,3 +1,4 @@
+<meta charset="UTF-8">
 <title>Grafo RAG Híbrido</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
@@ -273,8 +274,8 @@
             <text class="tag det" x="1254" y="345">DETERMIN&Iacute;STICO</text>
             <text class="title" x="1254" y="368">rerank_by_preference</text>
             <text class="file" x="1254" y="384">agent.py (interno)</text>
-            <text class="detail" x="1254" y="401">reordena por &Sigma; pesos</text>
-            <text class="detail" x="1254" y="413">de g&eacute;nero (sort estable)</text>
+            <text class="detail" x="1254" y="401">g&eacute;nero + ciudad,</text>
+            <text class="detail" x="1254" y="413">2 modos (sort estable)</text>
             <text class="write" x="1254" y="428">&rarr; state.events (reordenado)</text>
           </g>
 
@@ -315,12 +316,14 @@
       <p class="file">TypedDict que viaja completo entre los 8 nodos</p>
       <dl>
         <dt>query</dt><dd>texto original del usuario</dd>
+        <dt>history</dt><dd>&uacute;ltimos turnos de la conversaci&oacute;n (solo lo usa segment)</dd>
         <dt>segmented</dt><dd>salida de Gemini (segment)</dd>
         <dt>filters</dt><dd>filtros ya resueltos (route)</dd>
         <dt>strategy</dt><dd>"sql" | "qdrant" | "empty"</dd>
         <dt>semantic_text</dt><dd>texto libre para Qdrant</dd>
         <dt>events</dt><dd>resultados (mutado por 5 nodos)</dd>
         <dt>user_genre_weights</dt><dd>preferencias del usuario logueado</dd>
+        <dt>user_preferred_city_id</dt><dd>ciudad preferida (bonus/desempate en rerank)</dd>
         <dt>user_lat / user_lng</dt><dd>geolocalizaci&oacute;n del navegador</dd>
         <dt>response_text</dt><dd>salida final (generate)</dd>
       </dl>
@@ -343,8 +346,8 @@
     route: {
       cat: 'det', title: 'route', file: 'rag/router.py &middot; route_node &rarr; route_from_segments()',
       bullets: [
-        '100% determinístico, sin ningún LLM. Reutiliza <code>resolve_candidates()</code> de <code>entity_resolver.py</code>: valida cada candidato contra Postgres con similitud de trigramas (<code>pg_trgm</code>) sobre <code>djs / venues / genres / cities</code>, umbral <code>MIN_SCORE=0.4</code>.',
-        '<code>interpret_date()</code> resuelve "este finde", rangos amplios y fechas ordinales con calendario + <code>dateparser</code>; <code>interpret_price()</code> calcula el percentil 0.33 si <code>wants_cheap</code>; <code>interpret_distance_km()</code> da el radio (explícito o default 10km) solo si <code>is_self_location</code> y ya llegaron coordenadas del navegador.',
+        '100% determinístico, ningún LLM calcula nada acá. Reutiliza <code>resolve_candidates()</code> de <code>entity_resolver.py</code>: trigramas (<code>pg_trgm</code>) sobre <code>djs / venues / genres / cities</code>, umbral <code>MIN_SCORE=0.4</code> &mdash; <code>djs</code>/<code>genres</code> usan <code>word_similarity()</code> (sub-fragmento, resuelve apodos como "Bibi" &rarr; "Michael Bibi"); <code>venues</code>/<code>cities</code> usan <code>similarity()</code> (cadena completa). Empates reales (dos venues "Palacio Alsina", uno en Buenos Aires y otro en Córdoba) se devuelven TODOS, nunca se corta con <code>LIMIT 1</code> a ciegas.',
+        '<code>interpret_date()</code> prioriza <code>date_range_hint</code>: el LLM de <code>segment</code> clasifica rangos amplios ("este año", "sábado y domingo") en una categoría cerrada (<code>weekend/month/weeks/year</code>), pero nunca calcula una fecha &mdash; eso lo sigue haciendo este código, siempre; el matching de texto viejo queda como red de seguridad si el hint no vino. <code>interpret_price()</code> calcula el percentil 0.33 si <code>wants_cheap</code>; <code>interpret_distance_km()</code> da el radio (explícito o default 10km) solo si <code>is_self_location</code> y ya llegaron coordenadas del navegador.',
         'Decide la estrategia final (<code>sql</code> / <code>qdrant</code> / <code>empty</code>) como una arista condicional de primera clase del grafo, no un valor de retorno opaco.'
       ],
       writes: 'escribe <b>state.filters</b>, <b>state.strategy</b>, <b>state.semantic_text</b>'
@@ -361,8 +364,8 @@
     execute_qdrant: {
       cat: 'det', title: 'execute_qdrant', file: 'rag/query_executor.py &middot; execute_qdrant_node',
       bullets: [
-        'Genera el embedding de <code>semantic_text</code> con un modelo local (<code>SentenceTransformer</code>) &mdash; no es una llamada a Gemini, por eso este nodo cuenta como determinístico.',
-        'Busca por similitud vectorial en Qdrant con filtro de payload, e hidrata los resultados desde Postgres (fuente de verdad de <code>is_active</code>, porque el payload de Qdrant no se reactualiza tras indexar).',
+        'Genera el embedding de <code>semantic_text</code> con la API de embeddings de Gemini (<code>gemini-embedding-001</code>, <code>task_type="RETRIEVAL_QUERY"</code>, 768 dimensiones) &mdash; sigue contando como determinístico porque no genera ni decide nada: produce un vector a partir de texto ya resuelto, sin elección creativa de la IA.',
+        'Busca por similitud vectorial en Qdrant Cloud con filtro de payload, e hidrata los resultados desde Postgres (fuente de verdad de <code>is_active</code>, porque el payload de Qdrant no se reactualiza tras indexar).',
         'Si corresponde, aplica un post-filtro de distancia en Python (fórmula de Haversine) sobre los eventos ya recuperados &mdash; limitación conocida: se aplica después del límite de Qdrant, puede devolver menos resultados de los pedidos.'
       ],
       writes: 'escribe <b>state.events</b>'
@@ -387,9 +390,9 @@
     rerank: {
       cat: 'det', title: 'rerank_by_preference', file: 'rag/agent.py &middot; rerank_by_preference_node (interno del grafo)',
       bullets: [
-        'Si hay un usuario logueado con <code>user_genre_weights</code> guardados, reordena <code>state.events</code> por la <b>suma</b> de los pesos de cada género que el evento comparte con el usuario &mdash; afinidad graduada, no un corte binario de "coincide / no coincide".',
-        'Sort estable: eventos con el mismo score conservan su orden previo (cronológico en la rama SQL, por relevancia semántica en la rama Qdrant).',
-        'Si no hay preferencias guardadas, no hace nada.'
+        'Combina afinidad de género (<b>suma</b> de los pesos que el evento comparte con el usuario) y ciudad preferida, en DOS modos según si la consulta ya trae un género explícito.',
+        '<b>Sin género explícito</b>: la encuesta de géneros manda, la ciudad solo desempata (nunca le gana a una afinidad de género mayor, sea cual sea su magnitud). <b>Con género explícito</b> (ya filtrado por <code>route</code>): la afinidad sobrante se atenúa &times;0.3 y coincidir con la ciudad preferida suma un bonus real (mitad del peso máximo del usuario) &mdash; caso real que lo motivó: usuario con ciudad preferida sin "Techno" entre sus géneros, buscando "eventos de techno", donde la ciudad nunca podía competir ni con la afinidad más chica posible.',
+        'Sort estable en ambos modos: empates conservan el orden previo (cronológico en SQL, por relevancia semántica en Qdrant).'
       ],
       writes: 'muta <b>state.events</b> (reordenado, nunca agrega ni descarta)'
     },

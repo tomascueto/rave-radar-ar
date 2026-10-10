@@ -272,18 +272,18 @@
             <text class="title" x="456" y="236">Indexa Qdrant</text>
             <text class="file" x="456" y="254">index_events_</text>
             <text class="file" x="456" y="265">qdrant.py</text>
-            <text class="detail" x="456" y="287">embeddings (e5-large)</text>
+            <text class="detail" x="456" y="287">embeddings (Gemini, 768d)</text>
           </g>
 
           <g class="node cat-struct" data-node="ing_pipeline" tabindex="0" role="button" aria-label="Nodo Orquestador run_pipeline">
             <rect class="box" x="620" y="210" width="160" height="92" rx="10"></rect>
             <text class="title" x="636" y="232">Orquestador</text>
             <text class="file" x="636" y="250">run_pipeline.py</text>
-            <text class="detail" x="636" y="270">scrape&rarr;carga&rarr;</text>
-            <text class="detail" x="636" y="282">desactiva&rarr;enrich</text>
+            <text class="detail" x="636" y="270">7 pasos: scrape&rarr;</text>
+            <text class="detail" x="636" y="282">geocode&rarr;index</text>
           </g>
 
-          <text class="edge-label" x="76" y="346">run_pipeline.py encadena Scraper Jodify &rarr; enrich_venues &rarr; desactivar vencidos (nuevo). Avisa por mail a los admins si falla o da 0 eventos.</text>
+          <text class="edge-label" x="76" y="346">run_pipeline.py (7 pasos): Jodify &rarr; carga &rarr; desactivar &rarr; enrich_venues &rarr; geocode &rarr; geocode LLM &rarr; index Qdrant. Avisa por mail si falla o da 0 eventos.</text>
 
           <!-- ===== nodes: Almacenamiento ===== -->
           <g class="node cat-data" data-node="db_postgres" tabindex="0" role="button" aria-label="Nodo PostgreSQL + PostGIS">
@@ -297,8 +297,8 @@
 
           <g class="node cat-data" data-node="db_qdrant" tabindex="0" role="button" aria-label="Nodo Qdrant">
             <rect class="box" x="620" y="432" width="340" height="140" rx="10"></rect>
-            <text class="title" x="638" y="461">Qdrant</text>
-            <text class="file" x="638" y="481">vector store</text>
+            <text class="title" x="638" y="461">Qdrant Cloud</text>
+            <text class="file" x="638" y="481">vector store (managed)</text>
             <text class="detail" x="638" y="505">índice semántico de eventos</text>
             <text class="detail" x="638" y="527">repoblado por index_events_qdrant.py</text>
           </g>
@@ -462,22 +462,26 @@
       'load_jodify.py hace commit evento por evento, así un fallo puntual no descarta el resto del batch.'
     ], writes:'escribe en <b>PostgreSQL</b> (events, venues)' },
     ing_venues: { cat:'struct', title:'Venues Jodify', file:'scraper/sources/jodify_venues.py', bullets:[
-      'Extrae coordenadas reales del venue desde el HTML de la página propia de cada evento (enrich_venues()).',
-      'Ahora tiene sesión HTTP con reintentos y backoff (mismo mecanismo que el scraper principal), para que una falla de red transitoria no deje un venue sin coordenadas hasta la próxima corrida.',
-      'Lo invoca run_pipeline.py como paso 4/4, ya no hace falta correrlo a mano.'
-    ], writes:'escribe en <b>PostgreSQL</b> (venues.coordinates)' },
+      'Primer nivel del pipeline de geocodificación: extrae coordenadas reales del venue desde el HTML de la página propia de cada evento (enrich_venues()), vía regex sobre el payload de React Server Components.',
+      'Bug real encontrado y corregido: el regex de latitude/longitud exigía un backslash antes de la comilla opcional del valor, pero las coordenadas vienen como número JSON plano sin comillas &mdash; nunca matcheaba, para NINGÚN evento. Resultado del fix: 421/466 eventos reprocesados, 156 cambios reales de coordenadas, venues con precision=\'exact\' subió de 145 a 229 (de 240 totales).',
+      'Tiene sesión HTTP con reintentos y backoff (mismo mecanismo que el scraper principal). Lo invoca run_pipeline.py como paso 4/7.'
+    ], writes:'escribe en <b>PostgreSQL</b> (venues.coordinates, precision=\'exact\')' },
     ing_pipeline: { cat:'struct', title:'Orquestador diario', file:'scraper/run_pipeline.py', bullets:[
-      'Un solo comando (python -m scraper.run_pipeline) encadena: scrapear Jodify, cargar a Postgres, desactivar eventos con fecha ya pasada (deactivate_past_events.py, nuevo) y enriquecer venues con coordenadas reales.',
-      'No reemplaza a los scripts individuales, los reutiliza llamando a sus funciones en orden.',
+      'Un solo comando (python -m scraper.run_pipeline) encadena 7 pasos: scrapear Jodify &rarr; cargar a Postgres &rarr; desactivar eventos con fecha ya pasada &rarr; enriquecer venues (Jodify) &rarr; geocodificar restantes (Nominatim) &rarr; segunda pasada (Gemini+búsqueda) &rarr; indexar en Qdrant.',
+      'Los dos pasos de geocoding eran scripts manuales que nadie corría sobre venues nuevos &mdash; eventos quedaban sin coordenadas, invisibles en el mapa, hasta que alguien se acordaba de correrlos a mano.',
+      'No reemplaza a los scripts individuales, los reutiliza llamando a sus funciones en orden. Todos los pasos son resilientes a fallas parciales (un batch de Gemini que pega contra la cuota no aborta el pipeline entero).',
       'Si el scraper devuelve 0 eventos (posible token vencido) o el pipeline lanza una excepción, avisa por mail a todos los usuarios is_admin en vez de fallar en silencio.'
     ], writes:'orquesta los pasos de arriba, no escribe nada por sí mismo' },
-    ing_geocode: { cat:'struct', title:'Geocodificación', file:'scraper/geocode_venues.py', bullets:[
-      'Convierte la dirección de cada venue en coordenadas (lat/lng).'
-    ], writes:'actualiza <b>venues.geom</b>' },
-    ing_geocode_llm: { cat:'struct', title:'Geocod. 2&ordf; pasada (LLM)', file:'scraper/geocode_llm_second_pass.py', bullets:[
-      'Segunda pasada para direcciones que la geocodificación regular no pudo resolver.',
-      'Usa un LLM para interpretar direcciones ambiguas (ciudad y país mezclados en el mismo campo de texto).'
-    ], writes:'actualiza <b>venues.geom</b>' },
+    ing_geocode: { cat:'struct', title:'Geocodificación (Nominatim)', file:'scraper/geocode_venues.py', bullets:[
+      'Segundo nivel, solo para venues que enrich_venues() no pudo resolver. Dos intentos por venue contra Nominatim (OpenStreetMap): nombre+ciudad, y si falla, nombre+barrio.',
+      'Si ningún intento da un resultado específico (no genérico), cae a las coordenadas del centro de la ciudad &mdash; precision=\'city\', una aproximación explícita, nunca un dato inventado.',
+      'Ningún LLM interviene en este nivel: es geocodificación de texto contra una API determinística, con límite de 1 request/segundo.'
+    ], writes:'actualiza <b>venues.coordinates</b>, <b>precision</b> (\'exact\' | \'city\' | \'unknown\')' },
+    ing_geocode_llm: { cat:'struct', title:'Geocod. 3&ordf; pasada (LLM + búsqueda)', file:'scraper/geocode_llm_second_pass.py', bullets:[
+      'Tercer nivel, solo para venues en precision=\'city\'. Gemini (2.5-flash + Google Search) busca la DIRECCIÓN FÍSICA real del venue &mdash; nunca se le pide una coordenada directamente, para evitar que el modelo "calcule" o alucine un lat/lng.',
+      'La dirección que devuelve el LLM se geocodifica después con Nominatim (determinístico), y el resultado se valida contra el centro de la ciudad por fórmula de Haversine (descarta si da a más de 150km) &mdash; el LLM solo encuentra texto, nunca decide la coordenada final.',
+      'Procesa en lotes de ~10 venues por llamada (límite del free tier de Gemini: 20 requests/día). Cualquier falla deja el venue intacto con su fallback de ciudad, se reintenta otro día.'
+    ], writes:'actualiza <b>venues.coordinates</b>, <b>precision=\'llm_search\'</b>' },
     ing_dedup: { cat:'struct', title:'Dedup de venues', file:'scraper/detect_duplicate_venues.py', bullets:[
       'Detecta venues potencialmente duplicados (mismo lugar cargado con nombre o dirección ligeramente distinta) para revisión manual.'
     ], writes:'no escribe &mdash; genera un reporte' },
@@ -485,17 +489,19 @@
       'Carga la tabla cities y resuelve venues.city_id, reemplazando el city_name de texto libre que traía Jodify.'
     ], writes:'escribe <b>cities</b>, actualiza <b>venues.city_id</b>' },
     ing_index: { cat:'struct', title:'Indexación Qdrant', file:'scraper/index_events_qdrant.py', bullets:[
-      'Genera el embedding de cada evento con SentenceTransformer (multilingual-e5-large) y arma un payload filtrable.',
+      'Genera el embedding de cada evento con la API de Gemini (gemini-embedding-001, task_type=RETRIEVAL_DOCUMENT, 768 dimensiones) y arma un payload filtrable &mdash; reemplazó a un modelo local (SentenceTransformer) que corría en memoria del backend, migración motivada por bajar el footprint de RAM para desplegar en hosting gratis.',
+      'Maneja el rate limit del free tier de Gemini (100 requests/min) con un backoff propio &mdash; confirmado empíricamente, corta siempre a los 96 textos.',
       'Es el único paso de ingesta que escribe en Qdrant en vez de Postgres &mdash; el puente entre la fuente de verdad relacional y el índice semántico.'
-    ], writes:'escribe en <b>Qdrant</b>' },
+    ], writes:'escribe en <b>Qdrant Cloud</b>' },
     db_postgres: { cat:'data', title:'PostgreSQL + PostGIS', file:'database/models.py &middot; connection.py &middot; alembic/', bullets:[
       'Fuente de verdad relacional: User, Event, Venue, DJ, Genre, City, EventGenre, EventDJ, UserSavedEvent, UserGenrePreference, Conversation/ConversationMessage, RefreshToken, OAuthAccount y los tokens de verificación/reset.',
       'PostGIS permite ST_DWithin(geography) para filtrar eventos por distancia real desde la posición del usuario, no una comparación ingenua de lat/lng.',
       'Migraciones versionadas con Alembic; env.py ignora explícitamente las tablas internas de PostGIS/Tiger que no son del proyecto.'
     ], writes:'leído/escrito por casi todas las capas' },
-    db_qdrant: { cat:'data', title:'Qdrant', file:'vector store', bullets:[
-      'Índice vectorial de eventos, consultado por execute_qdrant_node cuando la búsqueda es semántica en vez de estructurada.',
-      'Se repuebla con scraper/index_events_qdrant.py. Postgres sigue siendo la fuente de verdad de is_active, porque el payload de Qdrant no se reactualiza solo después de indexar.'
+    db_qdrant: { cat:'data', title:'Qdrant Cloud', file:'vector store (managed)', bullets:[
+      'Índice vectorial de eventos (768 dimensiones, embeddings de Gemini), consultado por execute_qdrant_node cuando la búsqueda es semántica en vez de estructurada.',
+      'Se repuebla con scraper/index_events_qdrant.py. Postgres sigue siendo la fuente de verdad de is_active, porque el payload de Qdrant no se reactualiza solo después de indexar.',
+      'Cluster gestionado (Cloud), no una instancia local &mdash; el backend en producción apunta ahí vía QDRANT_URL/QDRANT_API_KEY, igual que el backend local cuando no se fuerza un override a Docker.'
     ], writes:'leído por el Agente RAG (búsqueda vectorial)' },
     agent_segment: { cat:'ia', title:'segment', file:'rag/query_segmenter.py', bullets:[
       'Gemini 2.5 Flash con salida JSON estricta (schema Pydantic) extrae entidades candidatas, fecha, precio y si la ubicación pedida es la propia del usuario.',
@@ -511,11 +517,12 @@
     api_events: { cat:'det', title:'api_events.py', file:'FastAPI app principal', bullets:[
       'GET /api/events/map devuelve eventos con coordenadas para el mapa, filtrando is_active=true, con auth opcional para personalizar por afinidad de género.',
       'POST /api/chat invoca run_agent() (rag/agent.py) y devuelve texto + eventos recomendados en el mismo formato que el mapa.',
-      'Carga el modelo de embeddings y el cliente de Qdrant una sola vez al arrancar el servidor, no en cada request.',
+      'Crea el cliente de Gemini (genai.Client(), liviano &mdash; ya no carga un modelo local en memoria) y el cliente de Qdrant una sola vez al arrancar el servidor, no en cada request.',
       'Registra los cuatro routers: auth_router, users_router, admin_router (admin/router.py) y el propio rag/router.py del chat.'
     ], writes:'llama al Agente RAG, lee PostgreSQL' },
     api_auth: { cat:'det', title:'auth/router.py', file:'+ dependencies.py, jwt_utils.py, password_utils.py, google_oauth.py, email_utils.py', bullets:[
       '/api/auth/*: registro y login por contraseña, login con Google OAuth, refresh token en cookie httponly, logout.',
+      'Atributos de cookie (SameSite/Secure) configurables por variable de entorno (COOKIE_SAMESITE/COOKIE_SECURE, default = comportamiento local sin cambios) &mdash; en producción, si frontend y backend quedan en dominios distintos, hace falta SameSite=none + Secure=true para que el navegador las mande; aplicado tanto a los set_cookie como a los delete_cookie (si los atributos no coinciden exactamente, el navegador no reconoce que es la misma cookie y no la borra).',
       'Verificación de email y forgot/reset/change password; email_utils.py manda los correos transaccionales vía SendGrid.',
       '/api/auth/me ahora también devuelve is_admin, que el frontend usa solo como comodidad de UX (mostrar u ocultar el link a /admin) &mdash; la protección real vive en el backend.'
     ], writes:'lee/escribe PostgreSQL (User, RefreshToken, OAuthAccount, tokens)' },
