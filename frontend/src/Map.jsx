@@ -974,15 +974,16 @@ function weatherCodeToEmoji(code) {
 // Clima de un evento guardado -- cada tarjeta de SavedEvents.jsx pide el
 // suyo por separado (GET .../saved-events/{id}/weather), no como parte del
 // listado general: así cada card resuelve a su propio ritmo en vez de que
-// una sola llamada lenta frene a todas. Requiere sesion (el endpoint es
-// /api/users/me/..., no hay variante de invitado) -- sin accessToken ni se
-// intenta. `enabled` es isSavedListCard: en el carrusel del mapa/chat el
-// hook se sigue llamando (regla de hooks), pero no hace ningun fetch.
+// una sola llamada lenta frene a todas. El endpoint acepta sesion opcional
+// (ver api_events.py) -- funciona igual para invitados, que guardan solo
+// en localStorage. `enabled` es isSavedListCard: en el carrusel del
+// mapa/chat el hook se sigue llamando (regla de hooks), pero no hace
+// ningun fetch.
 function useEventWeather(eventId, accessToken, enabled) {
   const [state, setState] = useState({ status: "idle" });
 
   useEffect(() => {
-    if (!enabled || !accessToken) {
+    if (!enabled) {
       setState({ status: "idle" });
       return;
     }
@@ -990,7 +991,7 @@ function useEventWeather(eventId, accessToken, enabled) {
     let cancelled = false;
     setState({ status: "loading" });
     fetch(`${API_BASE}/api/users/me/saved-events/${eventId}/weather`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
+      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
     })
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then((data) => {

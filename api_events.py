@@ -361,7 +361,7 @@ class EventWeatherResponse(BaseModel):
 
 
 @app.get("/api/users/me/saved-events/{event_id}/weather", response_model=EventWeatherResponse)
-def get_saved_event_weather(event_id: str, user: User = Depends(get_current_user)):
+def get_saved_event_weather(event_id: str, user: User | None = Depends(get_current_user_optional)):
     """
     Clima para UN evento guardado puntual -- se pide por separado por cada
     tarjeta visible (ver SavedEvents.jsx), no como parte del listado
@@ -372,6 +372,14 @@ def get_saved_event_weather(event_id: str, user: User = Depends(get_current_user
     donde pedir pronostico. "fuera_de_rango": hay coordenadas pero el
     evento cae fuera de la ventana de 16 dias que ofrece Open-Meteo (ver
     weather_utils.get_event_weather), o la API de clima fallo.
+
+    Sesion opcional: el guardado de un invitado vive solo en localStorage
+    del navegador, nunca en UserSavedEvent, asi que no hay nada contra lo
+    que verificar pertenencia -- se sirve el clima de cualquier evento por
+    id, sin ese chequeo. No es una fuga de datos nueva: lat/lng/fecha del
+    venue ya son publicos para cualquiera (logueado o no) via
+    /api/events/map; el chequeo de UserSavedEvent nunca fue un limite de
+    seguridad, solo acotaba el endpoint a "tus" guardados.
     """
     db = SessionLocal()
     try:
@@ -380,11 +388,12 @@ def get_saved_event_weather(event_id: str, user: User = Depends(get_current_user
         except ValueError:
             raise HTTPException(status_code=400, detail="ID de evento inválido")
 
-        is_saved = db.query(UserSavedEvent).filter(
-            UserSavedEvent.user_id == user.id, UserSavedEvent.event_id == event_uuid
-        ).first()
-        if not is_saved:
-            raise HTTPException(status_code=404, detail="Evento no encontrado entre tus guardados")
+        if user is not None:
+            is_saved = db.query(UserSavedEvent).filter(
+                UserSavedEvent.user_id == user.id, UserSavedEvent.event_id == event_uuid
+            ).first()
+            if not is_saved:
+                raise HTTPException(status_code=404, detail="Evento no encontrado entre tus guardados")
 
         event = db.query(Event).options(joinedload(Event.venue)).filter(Event.id == event_uuid).first()
         if event is None:
