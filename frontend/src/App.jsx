@@ -287,8 +287,18 @@ function App() {
   // puntual la vuelva a desbordar (un navegador raro, un caso que no
   // contemplamos), el documento fisicamente no pueda scrollear -- nunca
   // mas un click corriendo el Navbar para arriba sin que nada lo revierta.
+  //
+  // Excluye /admin y /reset-password a proposito: ninguna de las dos es
+  // "la app" (map/chat) que este efecto intenta proteger, pero como el
+  // efecto corre sin importar que JSX se haya devuelto mas abajo (los
+  // hooks no pueden ser condicionales), aplicaba igual -- bug real
+  // encontrado: con hasEntered=true (lo normal, si ya entraste antes por
+  // el landing), el panel de admin quedaba con overflow:hidden heredado
+  // y su lista de eventos (scroll de pagina normal, sin contenedor propio)
+  // quedaba completamente trabada, sin poder scrollear.
   useEffect(() => {
     if (!hasEntered) return;
+    if (window.location.pathname === "/admin" || window.location.pathname === "/reset-password") return;
     const { style } = document.documentElement;
     const previousOverflow = style.overflow;
     style.overflow = "hidden";
