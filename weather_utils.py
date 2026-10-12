@@ -128,8 +128,15 @@ def _fetch_hourly_block(lat: float, lng: float) -> dict | None:
     if not hourly.get("time"):
         return None
 
-    _cache[cache_key] = (hourly, time.time() + CACHE_TTL_SECONDS)
-    return hourly
+    # timezone="auto" hace que hourly.time venga en hora LOCAL del lat/lng
+    # (ej. "2026-10-11T20:00", sin offset), no UTC -- utc_offset_seconds es
+    # lo que Open-Meteo devuelve para poder reconvertir a UTC real mas
+    # abajo. Se cachea junto con hourly porque es el mismo location, mismo
+    # offset (Argentina no tiene horario de verano hoy en dia, pero no hay
+    # que asumirlo a mano).
+    block = {"hourly": hourly, "utc_offset_seconds": data.get("utc_offset_seconds", 0)}
+    _cache[cache_key] = (block, time.time() + CACHE_TTL_SECONDS)
+    return block
 
 
 DEFAULT_EVENT_DURATION_HOURS = 10  # fallback cuando no hay date_to -- coherente con eventos tipicos de 22 a 08
@@ -165,13 +172,31 @@ def get_event_weather(
         window_end = window_end.replace(tzinfo=timezone.utc)
 
     now = datetime.now(timezone.utc)
-    days_ahead = (date_from.date() - now.date()).days
-    if days_ahead < 0 or days_ahead > FORECAST_DAYS:
+    # Bug real: comparar solo .date() (sin hora) en UTC excluía eventos que
+    # ya habían EMPEZADO pero seguían en curso -- ej. evento a las 23:00 UTC,
+    # "ahora" cruza a las 00:xx UTC del día siguiente (normal: Argentina es
+    # UTC-3, así que un evento nocturno local cae tarde en UTC), date_from.
+    # date() queda un día "atrás" de now.date() y days_ahead daba -1, pese a
+    # que el evento seguía corriendo. Comparar contra window_end (la
+    # ventana completa, no solo el inicio) es lo correcto: solo se descarta
+    # si el evento YA TERMINÓ del todo.
+    if window_end < now:
+        return None
+    if date_from > now + timedelta(days=FORECAST_DAYS):
         return None
 
-    hourly = _fetch_hourly_block(lat, lng)
-    if not hourly:
+    block = _fetch_hourly_block(lat, lng)
+    if not block:
         return None
+    hourly = block["hourly"]
+    # hourly.time viene en hora LOCAL (timezone="auto" en _fetch_hourly_block),
+    # no UTC -- hay que sumarle el offset para comparar contra date_from/
+    # window_end, que sí son UTC real. Sin esto, la ventana quedaba
+    # corrida ~3hs (el offset de Argentina) contra la hora real del evento.
+    utc_offset = timedelta(seconds=block["utc_offset_seconds"])
+
+    def _to_utc(local_iso: str) -> datetime:
+        return (datetime.fromisoformat(local_iso) - utc_offset).replace(tzinfo=timezone.utc)
 
     times = hourly.get("time", [])
     temps = hourly.get("temperature_2m", [])
@@ -185,7 +210,7 @@ def get_event_weather(
 
     in_window = [
         i for i in range(len(times))
-        if start_ts <= datetime.fromisoformat(times[i]).replace(tzinfo=date_from.tzinfo).timestamp() <= end_ts
+        if start_ts <= _to_utc(times[i]).timestamp() <= end_ts
     ]
     if not in_window:
         # La ventana cae fuera de lo que Open-Meteo devolvió (ej: evento
@@ -194,7 +219,7 @@ def get_event_weather(
         target_ts = start_ts
         in_window = [min(
             range(len(times)),
-            key=lambda i: abs(datetime.fromisoformat(times[i]).replace(tzinfo=date_from.tzinfo).timestamp() - target_ts),
+            key=lambda i: abs(_to_utc(times[i]).timestamp() - target_ts),
         )]
 
     worst_idx = max(in_window, key=lambda i: _severity(codes[i]))
