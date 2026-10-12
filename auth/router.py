@@ -334,13 +334,21 @@ class RegisterIn(BaseModel):
 
 
 @router.post("/register", status_code=201)
-def register(body: RegisterIn):
+@limiter.limit("5/hour")
+def register(request: Request, body: RegisterIn):
     """
     Crea una cuenta con email y contraseña. La cuenta queda creada pero
     SIN poder loguearse todavía -- is_email_verified arranca en False, y
     /login rechaza cualquier intento hasta que se confirme el mail. Si ya
     existe una cuenta con ese email (por cualquier método, Google
     incluido), se rechaza con 409 en vez de crear un duplicado.
+
+    Rate limit (5/hora por IP): sin esto, el endpoint quedaba abierto a
+    creación de cuentas en masa -- cada intento hashea con bcrypt (costo
+    de CPU real), escribe filas nuevas en la base, y manda un mail real
+    vía SendGrid, incluso a emails ajenos que nunca pidieron nada. Mismo
+    criterio que forgot-password (3/hora), algo más generoso porque acá
+    el caso legítimo de reintentar (typo en el email, etc.) es más común.
     """
     if len(body.password) < 8:
         raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 8 caracteres")
