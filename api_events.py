@@ -29,7 +29,7 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from geoalchemy2.shape import to_shape
 from google import genai
@@ -266,7 +266,8 @@ def _load_recent_history(db, conversation_id) -> list[dict]:
 
 
 @app.post("/api/chat", response_model=ChatResponse)
-def chat(request: ChatRequest, user: User | None = Depends(get_current_user_optional)):
+@auth_limiter.limit("10/minute")
+def chat(request: Request, body: ChatRequest, user: User | None = Depends(get_current_user_optional)):
     """
     Ejecuta el agente formal de LangGraph (rag/agent.py): segmentar ->
     rutear -> ejecutar (arista condicional: SQL / Qdrant / vacio) ->
@@ -284,6 +285,11 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
     conversacion nueva -- el id resultante siempre viaja de vuelta en la
     respuesta, para que el cliente lo guarde y lo reuse en el proximo
     mensaje.
+
+    Rate limit (10/minuto por IP): es el unico endpoint que llama a Gemini
+    y pega contra Qdrant, y no requiere sesion -- sin limite, un script
+    agota en segundos la cuota diaria compartida (ya nos paso organicamente
+    una vez) o genera costo real sin que medie ningun usuario humano.
     """
     db = SessionLocal()
     try:
@@ -292,15 +298,15 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
             str(user.preferred_city_id) if user and user.preferred_city_id else None
         )
 
-        conversation = _resolve_conversation(db, request.conversation_id, user)
+        conversation = _resolve_conversation(db, body.conversation_id, user)
         history = _load_recent_history(db, conversation.id)
 
         final_state = run_agent(
-            db, _embedding_model, _qdrant_client, request.query,
+            db, _embedding_model, _qdrant_client, body.query,
             history=history,
             user_genre_weights=user_genre_weights,
             user_preferred_city_id=user_preferred_city_id,
-            user_lat=request.user_lat, user_lng=request.user_lng,
+            user_lat=body.user_lat, user_lng=body.user_lng,
         )
         events = final_state["events"]
         response_text = final_state["response_text"]
@@ -311,11 +317,11 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
             if me is not None:
                 map_events.append(me)
 
-        db.add(ConversationMessage(conversation_id=conversation.id, role="user", content=request.query))
+        db.add(ConversationMessage(conversation_id=conversation.id, role="user", content=body.query))
         db.add(ConversationMessage(conversation_id=conversation.id, role="assistant", content=response_text))
         db.commit()
 
-        print(f"[/api/chat] query: {request.query!r} | usuario: {user.email if user else 'anonimo'} | "
+        print(f"[/api/chat] query: {body.query!r} | usuario: {user.email if user else 'anonimo'} | "
               f"conversacion: {conversation.id} | historial usado: {len(history)} mensajes | "
               f"estrategia: {final_state['strategy']} | eventos: {len(events)} | "
               f"con coordenadas: {len(map_events)}")
@@ -326,11 +332,11 @@ def chat(request: ChatRequest, user: User | None = Depends(get_current_user_opti
 
     except Exception as exc:
         db.rollback()
-        print(f"[/api/chat] ERROR procesando {request.query!r}: {exc}")
+        print(f"[/api/chat] ERROR procesando {body.query!r}: {exc}")
         return ChatResponse(
             response_text="Uy, tuve un problema procesando tu consulta. Probá de nuevo en un momento.",
             events=[],
-            conversation_id=request.conversation_id or "",
+            conversation_id=body.conversation_id or "",
         )
     finally:
         db.close()
