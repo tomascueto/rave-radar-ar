@@ -65,6 +65,15 @@ def exchange_code_for_profile(code: str) -> dict:
         GOOGLE_CLIENT_ID,
     )
 
+    # Si el email no esta verificado por Google, no podemos confiar en el
+    # para vincular contra un usuario existente (google_callback hace
+    # exactamente eso por email) -- alguien podria crear una cuenta de
+    # Google con un email ajeno sin confirmar y "entrar" a la cuenta de
+    # otra persona. Verificar la firma del id_token no alcanza: certifica
+    # que Google lo emitio, no que Google confirmo ese email.
+    if not idinfo.get("email_verified"):
+        raise ValueError("El email de esta cuenta de Google no esta verificado")
+
     return {
         "sub": idinfo["sub"],
         "email": idinfo["email"],
