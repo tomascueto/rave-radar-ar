@@ -367,12 +367,20 @@ class EventWeatherResponse(BaseModel):
 
 
 @app.get("/api/users/me/saved-events/{event_id}/weather", response_model=EventWeatherResponse)
-def get_saved_event_weather(event_id: str, user: User | None = Depends(get_current_user_optional)):
+@auth_limiter.limit("20/minute")
+def get_saved_event_weather(request: Request, event_id: str, user: User | None = Depends(get_current_user_optional)):
     """
     Clima para UN evento guardado puntual -- se pide por separado por cada
     tarjeta visible (ver SavedEvents.jsx), no como parte del listado
     general, porque cada card lo necesita en un momento distinto y el
     listado ya es pesado de por si (foto, generos, venue).
+
+    Rate limit (20/minuto por IP): es sync y sin sesion obligatoria, asi
+    que sin limite un burst de requests concurrentes (incluso contra el
+    mismo event_id) podia agotar el thread pool compartido de FastAPI y
+    colgar el resto de las rutas sync de la app -- ver tambien el lock por
+    ubicacion en weather_utils.py, que evita que requests concurrentes a
+    la MISMA ubicacion disparen cada uno su propio fetch a Open-Meteo.
 
     "sin_ubicacion": el venue no tiene coordenadas -- directamente no hay
     donde pedir pronostico. "fuera_de_rango": hay coordenadas pero el

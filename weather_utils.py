@@ -17,6 +17,7 @@ inventado.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -94,6 +95,23 @@ def _severity(code: int) -> int:
 # sobrevivir un restart, se vuelve a pedir solo y es gratis.
 _cache: dict[tuple, tuple[dict, float]] = {}
 
+# Un lock por ubicación (no uno global) -- para que varios requests
+# concurrentes a la MISMA ubicación esperen y reusen un solo fetch a
+# Open-Meteo en vez de cada uno dispararlo por su cuenta (sin esto, N
+# requests concurrentes contra el mismo cache_key todos encuentran la
+# caché vacía y todos golpean la API real). _cache_locks_guard protege
+# la creación del lock en sí -- crearlo sin este guard tiene la misma
+# carrera que se busca evitar en el fetch.
+_cache_locks: dict[tuple, threading.Lock] = {}
+_cache_locks_guard = threading.Lock()
+
+
+def _lock_for(cache_key: tuple) -> threading.Lock:
+    with _cache_locks_guard:
+        if cache_key not in _cache_locks:
+            _cache_locks[cache_key] = threading.Lock()
+        return _cache_locks[cache_key]
+
 
 def _fetch_hourly_block(lat: float, lng: float) -> dict | None:
     """
@@ -109,34 +127,41 @@ def _fetch_hourly_block(lat: float, lng: float) -> dict | None:
     if cached and cached[1] > time.time():
         return cached[0]
 
-    params = {
-        "latitude": lat,
-        "longitude": lng,
-        "hourly": "temperature_2m,apparent_temperature,weather_code",
-        "forecast_days": FORECAST_DAYS,
-        "timezone": "auto",
-    }
-    try:
-        r = requests.get(FORECAST_URL, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-    except requests.RequestException as e:
-        log.warning("Error consultando Open-Meteo (%s, %s): %s", lat, lng, e)
-        return None
+    with _lock_for(cache_key):
+        # Re-chequear ya con el lock tomado: otro request pudo haber
+        # llenado la caché mientras esperábamos acá.
+        cached = _cache.get(cache_key)
+        if cached and cached[1] > time.time():
+            return cached[0]
 
-    hourly = data.get("hourly", {})
-    if not hourly.get("time"):
-        return None
+        params = {
+            "latitude": lat,
+            "longitude": lng,
+            "hourly": "temperature_2m,apparent_temperature,weather_code",
+            "forecast_days": FORECAST_DAYS,
+            "timezone": "auto",
+        }
+        try:
+            r = requests.get(FORECAST_URL, params=params, timeout=10)
+            r.raise_for_status()
+            data = r.json()
+        except requests.RequestException as e:
+            log.warning("Error consultando Open-Meteo (%s, %s): %s", lat, lng, e)
+            return None
 
-    # timezone="auto" hace que hourly.time venga en hora LOCAL del lat/lng
-    # (ej. "2026-10-11T20:00", sin offset), no UTC -- utc_offset_seconds es
-    # lo que Open-Meteo devuelve para poder reconvertir a UTC real mas
-    # abajo. Se cachea junto con hourly porque es el mismo location, mismo
-    # offset (Argentina no tiene horario de verano hoy en dia, pero no hay
-    # que asumirlo a mano).
-    block = {"hourly": hourly, "utc_offset_seconds": data.get("utc_offset_seconds", 0)}
-    _cache[cache_key] = (block, time.time() + CACHE_TTL_SECONDS)
-    return block
+        hourly = data.get("hourly", {})
+        if not hourly.get("time"):
+            return None
+
+        # timezone="auto" hace que hourly.time venga en hora LOCAL del lat/lng
+        # (ej. "2026-10-11T20:00", sin offset), no UTC -- utc_offset_seconds es
+        # lo que Open-Meteo devuelve para poder reconvertir a UTC real mas
+        # abajo. Se cachea junto con hourly porque es el mismo location, mismo
+        # offset (Argentina no tiene horario de verano hoy en dia, pero no hay
+        # que asumirlo a mano).
+        block = {"hourly": hourly, "utc_offset_seconds": data.get("utc_offset_seconds", 0)}
+        _cache[cache_key] = (block, time.time() + CACHE_TTL_SECONDS)
+        return block
 
 
 DEFAULT_EVENT_DURATION_HOURS = 10  # fallback cuando no hay date_to -- coherente con eventos tipicos de 22 a 08
