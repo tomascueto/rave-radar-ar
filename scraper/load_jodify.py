@@ -28,6 +28,7 @@ import re
 import uuid
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import urlparse
 
 import ftfy
 from sqlalchemy.orm import Session
@@ -61,6 +62,18 @@ def slugify(text: str) -> str:
     text = re.sub(r"[^\w\s-]", "", text)
     text = re.sub(r"[\s_]+", "-", text)
     return text
+
+
+def safe_url(value: str | None) -> str | None:
+    """Descarta cualquier valor que no sea http(s) -- ticket_url/flyer_url
+    terminan como href/src reales en el frontend, y Jodify es una fuente
+    externa que no controlamos; un 'ticket_link' o 'flyer' con esquema
+    javascript:/data: ahi adentro no debe llegar nunca a la base."""
+    if not value:
+        return None
+    if urlparse(value).scheme not in ("http", "https"):
+        return None
+    return value
 
 
 def parse_prices(price_list: list | None) -> tuple[Decimal | None, Decimal | None]:
@@ -198,11 +211,12 @@ def load_events(events: list[dict]) -> None:
                     event_type = "party"
 
                 image = raw.get("image") or {}
-                flyer_url = (
+                flyer_url = safe_url(
                     image.get("flyer")
                     or image.get("image_url")
                     or image.get("banner")
                 )
+                ticket_url = safe_url(raw.get("ticket_link"))
 
                 event = db.query(Event).filter_by(external_id=external_id).first()
                 if event:
@@ -229,7 +243,7 @@ def load_events(events: list[dict]) -> None:
                         min_price=min_price,
                         max_price=max_price,
                         currency="ARS",
-                        ticket_url=raw.get("ticket_link"),
+                        ticket_url=ticket_url,
                         flyer_url=flyer_url,
                         event_type=event_type,
                         is_active=raw.get("is_active", True),

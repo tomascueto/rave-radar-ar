@@ -13,10 +13,12 @@ archivo siguiendo ese patron.
 """
 from datetime import datetime, timezone
 
+from urllib.parse import urlparse
+
 from fastapi import APIRouter, Depends, HTTPException
 from geoalchemy2.functions import ST_GeomFromText
 from geoalchemy2.shape import to_shape
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
@@ -127,6 +129,16 @@ class EventUpdateIn(BaseModel):
     ticket_url: str | None = None
     flyer_url: str | None = None
     venue_id: str | None = None
+
+    @field_validator("ticket_url", "flyer_url")
+    @classmethod
+    def _solo_http_https(cls, value: str | None) -> str | None:
+        """ticket_url/flyer_url terminan como href/src reales en el
+        frontend (Map.jsx, ChatPanel.jsx) para todos los visitantes -- un
+        esquema javascript:/data: ahi es XSS persistente, no un link roto."""
+        if value is not None and urlparse(value).scheme not in ("http", "https"):
+            raise ValueError("Debe ser una URL http:// o https://")
+        return value
 
 
 class VenueOut(BaseModel):
