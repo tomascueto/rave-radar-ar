@@ -181,6 +181,12 @@ class User(Base):
     # ya aplicada en la base, faltaba declararla aca para que el ORM la
     # exponga como atributo de Python (get_current_admin_user la lee).
     is_admin = Column(Boolean, default=False)
+    # Bloqueo por intentos fallidos de login (auth/router.py:login) -- el
+    # rate limit de slowapi es por IP, asi que alguien rotando IPs lo
+    # esquiva por completo; esto bloquea por CUENTA, independiente de
+    # desde donde vengan los intentos.
+    failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
     terms_accepted_at = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow)
     updated_at = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)

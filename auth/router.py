@@ -454,6 +454,15 @@ class LoginIn(BaseModel):
     password: str
 
 
+# El rate limit de @limiter.limit de abajo es por IP -- alguien rotando
+# IPs lo esquiva por completo. Esto bloquea por CUENTA puntual, sin
+# importar desde donde vengan los intentos: tras MAX_FAILED_LOGIN_ATTEMPTS
+# fallos consecutivos contra el MISMO email, esa cuenta queda bloqueada
+# por LOGIN_LOCKOUT_MINUTES.
+MAX_FAILED_LOGIN_ATTEMPTS = 10
+LOGIN_LOCKOUT_MINUTES = 15
+
+
 @router.post("/login")
 @limiter.limit("5/minute")
 def login(request: Request, body: LoginIn):
@@ -467,6 +476,12 @@ def login(request: Request, body: LoginIn):
     try:
         user = db.query(User).filter(User.email == body.email).first()
 
+        if user is not None and user.locked_until is not None and user.locked_until > datetime.now(timezone.utc):
+            raise HTTPException(
+                status_code=429,
+                detail="Demasiados intentos fallidos. Probá de nuevo en unos minutos.",
+            )
+
         # Mismo mensaje genérico sin importar CUÁL de estas tres cosas
         # falló (el email no existe, la cuenta es solo-Google sin
         # contraseña, o la contraseña no coincide) -- evita que la
@@ -474,13 +489,23 @@ def login(request: Request, body: LoginIn):
         credenciales_invalidas = HTTPException(
             status_code=401, detail="Email o contraseña incorrectos"
         )
-        if user is None or user.password_hash is None:
-            raise credenciales_invalidas
-        if not verify_password(body.password, user.password_hash):
+        if user is None or user.password_hash is None or not verify_password(body.password, user.password_hash):
+            if user is not None:
+                # Se cuenta el intento fallido aunque la cuenta no tenga
+                # contraseña propia (solo-Google) -- mismo mensaje
+                # genérico de arriba, no hay que distinguir ese caso acá.
+                user.failed_login_attempts += 1
+                if user.failed_login_attempts >= MAX_FAILED_LOGIN_ATTEMPTS:
+                    user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOGIN_LOCKOUT_MINUTES)
+                    user.failed_login_attempts = 0
+                db.commit()
             raise credenciales_invalidas
 
         if not user.is_email_verified:
             raise HTTPException(status_code=403, detail="Confirmá tu email antes de iniciar sesión")
+
+        user.failed_login_attempts = 0
+        user.locked_until = None
 
         access_token = create_access_token(user.id)
         raw_refresh, refresh_hash = generate_refresh_token()
